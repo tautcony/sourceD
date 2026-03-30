@@ -1,5 +1,7 @@
 "use strict";
 
+var h = React.createElement;
+
 function buildMapTree(files) {
   var root = { folders: {}, files: [] };
 
@@ -35,34 +37,34 @@ function renderTreeNode(node, depth, parentPath) {
     var folderPath = (parentPath ? parentPath + "/" : "") + folder.name;
     var collapsed = !!appState.collapsedFolders[folderPath];
 
-    return createVDOM("div", { className: "tree-node" },
-      createVDOM("div", {
+    return h("div", { key: "folder-" + folderPath, className: "tree-node" },
+      h("div", {
         className: "tree-folder",
-        style: "padding-left:" + (depth * 18 + 16) + "px",
-        onclick: handleFolderClick,
-        _folderKey: folderPath
+        style: { paddingLeft: (depth * 18 + 16) + "px" },
+        onClick: handleFolderClick,
+        "data-folder-key": folderPath
       },
-        createVDOM("span", { className: "tree-caret" }, collapsed ? "▸" : "▾"),
-        createVDOM("span", { className: "tree-folder-name" }, folder.name)
+        h("span", { className: "tree-caret" }, collapsed ? "▸" : "▾"),
+        h("span", { className: "tree-folder-name" }, folder.name)
       ),
-      collapsed ? [] : renderTreeNode(folder, depth + 1, folderPath)
+      collapsed ? null : renderTreeNode(folder, depth + 1, folderPath)
     );
   }).concat(fileNodes.map(function (file) {
-    return createVDOM("div", { className: "file-item tree-file-item" },
-      createVDOM("div", {
+    return h("div", { key: "file-" + file.url, className: "file-item tree-file-item" },
+      h("div", {
         className: "file-name-wrap",
-        onclick: handleFileClick,
-        _fileUrl: file.url,
-        style: "padding-left:" + (depth * 18 + 34) + "px"
+        onClick: handleFileClick,
+        "data-file-url": file.url,
+        style: { paddingLeft: (depth * 18 + 34) + "px" }
       },
-        createVDOM("span", { className: "tree-file-bullet" }, "•"),
-        createVDOM("a", {
+        h("span", { className: "tree-file-bullet" }, "•"),
+        h("a", {
           className: "file-url",
           href: "#",
           title: file.url
         }, file.name)
       ),
-      createVDOM("span", { className: "file-size" }, fileSizeIEC(file.size))
+      h("span", { className: "file-size" }, fileSizeIEC(file.size))
     );
   }));
 }
@@ -70,25 +72,24 @@ function renderTreeNode(node, depth, parentPath) {
 function buildVDOM(s) {
   var totalBytes = s.totalStorageBytes || 0;
 
-  var statsRow = [
-    createVDOM("div", { className: "header-stats" },
-      createVDOM("span", { className: "stat-item" }, i18nMessage("popupStoredVersions", [String(s.totalVersions || 0)])),
-      createVDOM("span", { className: "stat-sep" }, "·"),
-      createVDOM("span", { className: "stat-item" }, i18nMessage("popupStorageUsed", [fileSizeIEC(totalBytes)]))
-    )
-  ];
+  var statsRow =
+    h("div", { className: "header-stats" },
+      h("span", { className: "stat-item" }, i18nMessage("popupStoredVersions", [String(s.totalVersions || 0)])),
+      h("span", { className: "stat-sep" }, "·"),
+      h("span", { className: "stat-item" }, i18nMessage("popupStorageUsed", [fileSizeIEC(totalBytes)]))
+    );
 
-  var header = createVDOM("div", { className: "header" },
-    createVDOM("div", { className: "header-top" },
-      createVDOM("h1", {}, i18nMessage("popupHeaderTitle")),
-      createVDOM("div", { className: "header-actions" },
-        createVDOM("button", {
+  var header = h("div", { className: "header" },
+    h("div", { className: "header-top" },
+      h("h1", null, i18nMessage("popupHeaderTitle")),
+      h("div", { className: "header-actions" },
+        h("button", {
           className: "btn btn-secondary btn-small",
-          onclick: handleOpenHistory
+          onClick: handleOpenHistory
         }, i18nMessage("popupOpenHistory")),
-        createVDOM("button", {
+        h("button", {
           className: "btn btn-secondary btn-small" + (s.latestVersion ? "" : " disabled"),
-          onclick: handleClearCurrentPage
+          onClick: handleClearCurrentPage
         }, i18nMessage("popupClearButton"))
       )
     ),
@@ -96,56 +97,62 @@ function buildVDOM(s) {
   );
 
   if (s.loading) {
-    return createVDOM("div", { className: "app-container" },
+    return h("div", { className: "app-container" },
       header,
-      createVDOM("div", { className: "loading-state" }, i18nMessage("popupLoading"))
+      h("div", { className: "loading-state" }, i18nMessage("popupLoading"))
     );
   }
 
   if (!s.latestVersion) {
-    return createVDOM("div", { className: "app-container" },
+    return h("div", { className: "app-container" },
       header,
-      createVDOM("div", { className: "empty-state" },
-        createVDOM("div", { className: "empty-icon" }, "📦"),
-        createVDOM("p", {}, i18nMessage("popupEmptyTitle")),
-        createVDOM("p", { className: "hint" }, i18nMessage("popupEmptyHint"))
+      h("div", { className: "empty-state" },
+        h("div", { className: "empty-icon" }, "📦"),
+        h("p", null, i18nMessage("popupEmptyTitle")),
+        h("p", { className: "hint" }, i18nMessage("popupEmptyHint"))
       )
     );
   }
 
   var fileTree = buildMapTree(s.files);
 
-  return createVDOM("div", { className: "app-container" },
+  return h("div", { className: "app-container" },
     header,
-    createVDOM("div", { className: "content-container" },
-      createVDOM("div", { className: "content-header" },
-        createVDOM("div", { className: "page-meta" },
-          createVDOM("a", {
+    h("div", { className: "content-container" },
+      h("div", { className: "content-header" },
+        h("div", { className: "page-meta" },
+          h("a", {
             className: "page-link",
             href: s.pageUrl,
-            target: "_blank"
+            target: "_blank",
+            rel: "noopener noreferrer"
           }, s.pageUrl),
-          createVDOM("div", { className: "latest-version-line" },
+          h("div", { className: "latest-version-line" },
             i18nMessage("popupLatestVersion", [s.latestVersion.label])
           )
         ),
-        createVDOM("div", { className: "actions" },
-          createVDOM("button", {
+        h("div", { className: "actions" },
+          h("button", {
             className: "btn btn-primary",
-            onclick: handleDownloadAll
+            onClick: handleDownloadAll
           },
-            createVDOM("span", { className: "btn-icon" }, "⬇"),
+            h("span", { className: "btn-icon" }, "⬇"),
             " " + i18nMessage("popupDownloadAll")
           )
         )
       ),
-      createVDOM("div", { className: "file-list" },
+      h("div", { className: "file-list" },
         renderTreeNode(fileTree, 0, "")
       )
     )
   );
 }
 
+var reactRoot = null;
+
 function renderApp() {
-  renderDOM(buildVDOM(appState), document.getElementById("app"));
+  if (!reactRoot) {
+    reactRoot = ReactDOM.createRoot(document.getElementById("app"));
+  }
+  reactRoot.render(buildVDOM(appState));
 }

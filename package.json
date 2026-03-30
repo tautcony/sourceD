@@ -17,8 +17,9 @@
   "dependencies": {
     "jszip": "3.10.1",
     "lodash": "4.17.23",
-    "source-map-js": "^1.2.1",
-    "tiny-react": "0.0.3"
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "source-map-js": "^1.2.1"
   },
   "devDependencies": {
     "esbuild": "^0.27.4"

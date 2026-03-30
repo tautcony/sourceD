@@ -40,19 +40,19 @@ function loadPopupState() {
 function handleFileClick(e) {
   e.preventDefault();
   var el = e.target.closest(".file-name-wrap");
-  if (!el || !el._fileUrl || !appState.latestVersion) return;
-  var file = appState.files.find(function (item) { return item.url === el._fileUrl; });
+  if (!el || !el.dataset.fileUrl || !appState.latestVersion) return;
+  var file = appState.files.find(function (item) { return item.url === el.dataset.fileUrl; });
   if (!file) return;
   parseSourceMap(
-    sanitizeFilename(parseFileName(el._fileUrl)),
+    sanitizeFilename(parseFileName(el.dataset.fileUrl)),
     file.content
   ).catch(function (err) { console.error("[SourceD] download error:", err); });
 }
 
 function handleFolderClick(e) {
   var folder = e.target.closest(".tree-folder");
-  if (!folder || !folder._folderKey) return;
-  appState.collapsedFolders[folder._folderKey] = !appState.collapsedFolders[folder._folderKey];
+  if (!folder || !folder.dataset.folderKey) return;
+  appState.collapsedFolders[folder.dataset.folderKey] = !appState.collapsedFolders[folder.dataset.folderKey];
   renderApp();
 }
 
