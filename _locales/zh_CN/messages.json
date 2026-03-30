@@ -1,0 +1,362 @@
+{
+  "appName": {
+    "message": "SourceD",
+    "description": "扩展名称"
+  },
+  "appDescription": {
+    "message": "检测包含 sourcesContent 的 source map，并将还原出的源码打包下载为 ZIP。",
+    "description": "扩展简介"
+  },
+  "actionTitle": {
+    "message": "SourceD",
+    "description": "工具栏标题"
+  },
+  "commonUnknown": {
+    "message": "未知",
+    "description": "未知值兜底文案"
+  },
+  "commonFileCount": {
+    "message": "$1 个文件",
+    "description": "文件数量文案"
+  },
+  "optionsPageTitle": {
+    "message": "SourceD",
+    "description": "设置页标题"
+  },
+  "optionsEyebrow": {
+    "message": "浏览器扩展",
+    "description": "设置页眉标"
+  },
+  "optionsLead": {
+    "message": "检测包含嵌入源码的 source map，并将还原出的文件打包导出为 ZIP。",
+    "description": "设置页导语"
+  },
+  "optionsVersion": {
+    "message": "版本",
+    "description": "设置页指标标题"
+  },
+  "optionsCachedMaps": {
+    "message": "存储版本数",
+    "description": "设置页指标标题"
+  },
+  "optionsTrackedPages": {
+    "message": "跟踪页面数",
+    "description": "设置页指标标题"
+  },
+  "optionsWhatItDoesTitle": {
+    "message": "功能说明",
+    "description": "设置页章节标题"
+  },
+  "optionsWhatItDoesBody": {
+    "message": "SourceD 会监听页面中的 JavaScript 请求，定位 <code>sourceMappingURL</code>，仅保留带有 <code>sourcesContent</code> 的有效 source map，并在弹窗中提供源码树下载。",
+    "description": "设置页章节内容"
+  },
+  "optionsPermissionsTitle": {
+    "message": "权限说明",
+    "description": "设置页章节标题"
+  },
+  "optionsPermissionWebRequest": {
+    "message": "<code>webRequest</code>：用于识别可能引用 source map 的 JavaScript 文件",
+    "description": "权限说明"
+  },
+  "optionsPermissionDownloads": {
+    "message": "<code>downloads</code>：用于保存还原后的源码压缩包",
+    "description": "权限说明"
+  },
+  "optionsPermissionTabs": {
+    "message": "<code>tabs</code>：用于将检测结果关联到当前页面",
+    "description": "权限说明"
+  },
+  "optionsPermissionStorage": {
+    "message": "<code>storage</code>：用于在本地保存 map 元数据",
+    "description": "权限说明"
+  },
+  "optionsPermissionHosts": {
+    "message": "<code>&lt;all_urls&gt;</code>：因为 source map 可能托管在任意域名下",
+    "description": "权限说明"
+  },
+  "optionsPrivacyTitle": {
+    "message": "隐私说明",
+    "description": "设置页章节标题"
+  },
+  "optionsPrivacyLocal": {
+    "message": "所有处理都在浏览器扩展本地完成",
+    "description": "隐私说明"
+  },
+  "optionsPrivacyNoRemote": {
+    "message": "本项目不会将收集到的 map 数据发送到远端服务",
+    "description": "隐私说明"
+  },
+  "optionsPrivacyClear": {
+    "message": "你可以随时在弹窗菜单中清除缓存数据",
+    "description": "隐私说明"
+  },
+  "optionsResponsibleTitle": {
+    "message": "使用边界",
+    "description": "设置页章节标题"
+  },
+  "optionsResponsibleBody": {
+    "message": "请仅在你被授权检查部署产物或恢复嵌入源码的场景下使用 SourceD。source map 暴露仍可能受到许可证、平台策略和法律约束。",
+    "description": "使用边界说明"
+  },
+  "optionsHistoryTitle": {
+    "message": "历史面板",
+    "description": "历史章节标题"
+  },
+  "optionsHistoryBody": {
+    "message": "打开完整面板后，可按页面查看版本历史、展开文件树、查看数据分布，并调整清理设置。",
+    "description": "历史面板说明"
+  },
+  "optionsDistributionTitle": {
+    "message": "数据分布",
+    "description": "分布章节标题"
+  },
+  "optionsSettingsTitle": {
+    "message": "设置项",
+    "description": "设置章节标题"
+  },
+  "optionsSettingRetentionDays": {
+    "message": "历史保留天数",
+    "description": "设置标签"
+  },
+  "optionsSettingMaxVersions": {
+    "message": "每个页面最多保留版本数",
+    "description": "设置标签"
+  },
+  "optionsSettingAutoCleanup": {
+    "message": "自动清理过旧历史",
+    "description": "设置标签"
+  },
+  "optionsSaveSettings": {
+    "message": "保存设置",
+    "description": "保存按钮"
+  },
+  "optionsSaving": {
+    "message": "保存中…",
+    "description": "保存状态"
+  },
+  "optionsSaved": {
+    "message": "已保存",
+    "description": "保存完成状态"
+  },
+  "optionsDeleteVersion": {
+    "message": "删除",
+    "description": "删除版本按钮"
+  },
+  "optionsVersionSeenAt": {
+    "message": "最近出现：$1",
+    "description": "版本最近出现时间"
+  },
+  "optionsVersionsUnit": {
+    "message": "个版本",
+    "description": "版本单位"
+  },
+  "optionsMapsUnit": {
+    "message": "个 map",
+    "description": "map 单位"
+  },
+  "optionsEmptyHistory": {
+    "message": "还没有历史数据。",
+    "description": "历史为空"
+  },
+  "optionsEmptyDistribution": {
+    "message": "还没有数据分布信息。",
+    "description": "分布为空"
+  },
+  "optionsOpenDashboard": {
+    "message": "打开历史面板",
+    "description": "打开面板按钮"
+  },
+  "popupClearMenuOlderThan7d": {
+    "message": "清除 7 天前的数据",
+    "description": "弹窗清理菜单"
+  },
+  "popupClearMenuAll": {
+    "message": "清空全部",
+    "description": "弹窗清理菜单"
+  },
+  "popupHeaderTitle": {
+    "message": "SourceD",
+    "description": "弹窗标题"
+  },
+  "popupClearButton": {
+    "message": "清空当前页面",
+    "description": "弹窗清空按钮"
+  },
+  "popupEmptyTitle": {
+    "message": "未检测到源码文件",
+    "description": "空状态标题"
+  },
+  "popupEmptyHint": {
+    "message": "访问包含 source map 的网站后将自动识别",
+    "description": "空状态提示"
+  },
+  "popupDownloadAll": {
+    "message": "下载全部",
+    "description": "弹窗下载按钮"
+  },
+  "popupStoredVersions": {
+    "message": "$1 个版本",
+    "description": "弹窗版本统计"
+  },
+  "popupStorageUsed": {
+    "message": "已用 $1",
+    "description": "弹窗存储统计"
+  },
+  "popupOpenHistory": {
+    "message": "历史面板",
+    "description": "弹窗打开历史按钮"
+  },
+  "popupLoading": {
+    "message": "正在加载当前页面数据…",
+    "description": "弹窗加载文案"
+  },
+  "popupLatestVersion": {
+    "message": "最新版本：$1",
+    "description": "弹窗最新版本文案"
+  },
+  "popupLastUpdated": {
+    "message": "最后更新：$1",
+    "description": "最后更新时间提示"
+  },
+  "popupStorageSegTitle": {
+    "message": "$1  $2  ($3 个文件)",
+    "description": "站点存储分布提示"
+  },
+  "dashboardPageTitle": {
+    "message": "SourceD 历史面板",
+    "description": "历史面板标题"
+  },
+  "dashboardEyebrow": {
+    "message": "Source Map 档案",
+    "description": "历史面板眉标"
+  },
+  "dashboardTitle": {
+    "message": "SourceD 历史面板",
+    "description": "历史面板标题"
+  },
+  "dashboardLead": {
+    "message": "集中查看已追踪页面、每次采集到的版本、存储分布，以及历史保留设置。",
+    "description": "历史面板导语"
+  },
+  "dashboardRefresh": {
+    "message": "刷新",
+    "description": "刷新按钮"
+  },
+  "dashboardTotalPages": {
+    "message": "跟踪页面数",
+    "description": "历史面板指标"
+  },
+  "dashboardTotalVersions": {
+    "message": "存储版本数",
+    "description": "历史面板指标"
+  },
+  "dashboardTotalStorage": {
+    "message": "空间占用",
+    "description": "历史面板指标"
+  },
+  "dashboardHistoryTitle": {
+    "message": "历史数据",
+    "description": "历史面板章节标题"
+  },
+  "dashboardHistoryCopy": {
+    "message": "先按页面分组，再展开查看每个版本及其 source map 文件树。",
+    "description": "历史说明"
+  },
+  "dashboardDistributionTitle": {
+    "message": "数据分布",
+    "description": "分布章节标题"
+  },
+  "dashboardDistributionCopy": {
+    "message": "按站点汇总存储占用，便于查看哪些来源增长最快。",
+    "description": "分布说明"
+  },
+  "dashboardSettingsTitle": {
+    "message": "设置项",
+    "description": "设置章节标题"
+  },
+  "dashboardSettingsCopy": {
+    "message": "历史自动清理会遵循下面的保留策略。",
+    "description": "设置说明"
+  },
+  "dashboardSettingRetentionDays": {
+    "message": "历史保留天数",
+    "description": "设置标签"
+  },
+  "dashboardSettingMaxVersions": {
+    "message": "每个页面最多保留版本数",
+    "description": "设置标签"
+  },
+  "dashboardSettingAutoCleanup": {
+    "message": "自动清理过旧历史",
+    "description": "设置标签"
+  },
+  "dashboardSaveSettings": {
+    "message": "保存设置",
+    "description": "保存按钮"
+  },
+  "dashboardSaving": {
+    "message": "保存中…",
+    "description": "保存状态"
+  },
+  "dashboardSaved": {
+    "message": "已保存",
+    "description": "保存完成状态"
+  },
+  "dashboardLoading": {
+    "message": "加载中…",
+    "description": "加载状态"
+  },
+  "dashboardLoadingVersion": {
+    "message": "正在加载版本详情…",
+    "description": "版本详情加载状态"
+  },
+  "dashboardEmptyHistory": {
+    "message": "还没有历史数据。",
+    "description": "历史为空"
+  },
+  "dashboardEmptyDistribution": {
+    "message": "还没有分布数据。",
+    "description": "分布为空"
+  },
+  "dashboardEmptyVersionFiles": {
+    "message": "这个版本下没有文件。",
+    "description": "版本文件为空"
+  },
+  "dashboardLastUpdated": {
+    "message": "最近更新 $1",
+    "description": "页面更新时间"
+  },
+  "dashboardCapturedAt": {
+    "message": "$1",
+    "description": "版本采集时间"
+  },
+  "dashboardMapCount": {
+    "message": "$1 个 map",
+    "description": "map 数量"
+  },
+  "dashboardDeleteVersion": {
+    "message": "删除",
+    "description": "删除版本按钮"
+  },
+  "dashboardDownloadVersion": {
+    "message": "下载该版本",
+    "description": "单版本下载按钮"
+  },
+  "dashboardVersionFiles": {
+    "message": "$1 个文件",
+    "description": "版本文件数"
+  },
+  "dashboardDistributionVersions": {
+    "message": "$1 个版本",
+    "description": "分布版本数"
+  },
+  "dashboardDistributionMaps": {
+    "message": "$1 个 map",
+    "description": "分布 map 数"
+  },
+  "dashboardDomainSummary": {
+    "message": "$1 个页面 · $2 个版本",
+    "description": "domain 汇总"
+  }
+}

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title id="dashboard-page-title">SourceD</title>
+    <link href="styles/main.css" rel="stylesheet" />
+  </head>
+  <body class="dashboard-page">
+    <main class="dashboard-layout">
+      <section class="dashboard-hero">
+        <div>
+          <p class="eyebrow" id="dashboard-eyebrow">Source Map Archive</p>
+          <h1 id="dashboard-title">SourceD History</h1>
+          <p class="dashboard-lead" id="dashboard-lead">Browse every tracked page, inspect each captured version, review storage distribution, and adjust retention settings.</p>
+        </div>
+        <div class="dashboard-hero-actions">
+          <button id="dashboard-refresh" class="btn btn-secondary" type="button">Refresh</button>
+        </div>
+      </section>
+
+      <section class="dashboard-summary">
+        <article class="summary-card">
+          <span class="summary-label" id="dashboard-total-pages-label">Tracked Pages</span>
+          <strong id="dashboard-total-pages">-</strong>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label" id="dashboard-total-versions-label">Stored Versions</span>
+          <strong id="dashboard-total-versions">-</strong>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label" id="dashboard-total-storage-label">Storage Used</span>
+          <strong id="dashboard-total-storage">-</strong>
+        </article>
+      </section>
+
+      <section class="dashboard-section">
+        <div class="section-head">
+          <div>
+            <h2 id="dashboard-history-title">History</h2>
+            <p class="section-copy" id="dashboard-history-copy">Pages are grouped first. Expand a page to inspect each captured version and its source map tree.</p>
+          </div>
+        </div>
+        <div id="dashboard-history-list" class="dashboard-history-list"></div>
+      </section>
+
+      <section class="dashboard-section">
+        <div class="section-head">
+          <div>
+            <h2 id="dashboard-distribution-title">Data Distribution</h2>
+            <p class="section-copy" id="dashboard-distribution-copy">Storage is summarized by origin so you can see where the archive grows fastest.</p>
+          </div>
+        </div>
+        <div id="dashboard-distribution-list" class="dashboard-distribution-list"></div>
+      </section>
+
+      <section class="dashboard-section">
+        <div class="section-head">
+          <div>
+            <h2 id="dashboard-settings-title">Settings</h2>
+            <p class="section-copy" id="dashboard-settings-copy">History cleanup runs against the limits configured below.</p>
+          </div>
+        </div>
+        <form id="dashboard-settings-form" class="settings-form">
+          <label class="settings-field">
+            <span id="dashboard-setting-retention-label">Retention Days</span>
+            <input id="dashboard-setting-retention-days" type="number" min="1" max="365" />
+          </label>
+          <label class="settings-field">
+            <span id="dashboard-setting-max-versions-label">Max Versions Per Page</span>
+            <input id="dashboard-setting-max-versions" type="number" min="1" max="100" />
+          </label>
+          <label class="settings-check">
+            <input id="dashboard-setting-auto-cleanup" type="checkbox" />
+            <span id="dashboard-setting-auto-cleanup-label">Automatically prune old history</span>
+          </label>
+          <div class="settings-actions">
+            <button id="dashboard-settings-save" type="submit" class="btn btn-primary">Save Settings</button>
+            <span id="dashboard-settings-status" class="settings-status"></span>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <script src="vendor/jszip.js"></script>
+    <script src="vendor/source-map.js"></script>
+    <script src="src/shared/utils.js"></script>
+    <script src="src/popup/sourcemap.js"></script>
+    <script src="src/dashboard/index.js"></script>
+  </body>
+</html>

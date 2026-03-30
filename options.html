@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title id="options-page-title">SourceD</title>
+    <link href="styles/main.css" rel="stylesheet" />
+  </head>
+  <body class="options-page">
+    <main class="options-layout">
+      <section class="options-hero">
+        <p class="eyebrow" id="options-eyebrow">Browser Extension</p>
+        <h1>SourceD</h1>
+        <p class="options-lead" id="options-lead">Detect source maps that contain embedded sources and export the recovered files as ZIP archives.</p>
+        <div class="options-meta">
+          <div class="meta-card">
+            <span class="meta-label" id="options-version-label">Version</span>
+            <strong id="app-version">-</strong>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label" id="options-cached-maps-label">Cached Maps</span>
+            <strong id="map-count">-</strong>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label" id="options-tracked-pages-label">Tracked Pages</span>
+            <strong id="page-count">-</strong>
+          </div>
+        </div>
+        <div class="options-hero-actions">
+          <button id="options-open-dashboard" type="button" class="btn btn-secondary">Open History Dashboard</button>
+        </div>
+      </section>
+
+      <section class="options-card">
+        <h2 id="options-what-it-does-title">What It Does</h2>
+        <p id="options-what-it-does-body"></p>
+      </section>
+
+      <section class="options-card">
+        <h2 id="options-permissions-title">Permissions</h2>
+        <ul class="options-list">
+          <li id="options-permission-webrequest"></li>
+          <li id="options-permission-downloads"></li>
+          <li id="options-permission-tabs"></li>
+          <li id="options-permission-storage"></li>
+          <li id="options-permission-hosts"></li>
+        </ul>
+      </section>
+
+      <section class="options-card">
+        <h2 id="options-privacy-title">Privacy</h2>
+        <ul class="options-list">
+          <li id="options-privacy-local"></li>
+          <li id="options-privacy-remote"></li>
+          <li id="options-privacy-clear"></li>
+        </ul>
+      </section>
+
+      <section class="options-card">
+        <h2 id="options-responsible-title">Responsible Use</h2>
+        <p id="options-responsible-body"></p>
+      </section>
+
+      <section class="options-card">
+        <h2 id="options-history-title">History Dashboard</h2>
+        <p id="options-history-body"></p>
+      </section>
+    </main>
+
+    <script src="src/options/index.js"></script>
+  </body>
+</html>

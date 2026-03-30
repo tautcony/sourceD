@@ -1,0 +1,362 @@
+{
+  "appName": {
+    "message": "SourceD",
+    "description": "The name of the application"
+  },
+  "appDescription": {
+    "message": "Detect source maps with embedded sources and download recovered files as ZIP archives.",
+    "description": "Short extension description shown in Chromium-based browsers."
+  },
+  "actionTitle": {
+    "message": "SourceD",
+    "description": "Toolbar action title"
+  },
+  "commonUnknown": {
+    "message": "Unknown",
+    "description": "Fallback text when a value is unavailable"
+  },
+  "commonFileCount": {
+    "message": "$1 files",
+    "description": "File count label"
+  },
+  "optionsPageTitle": {
+    "message": "SourceD",
+    "description": "Options page title"
+  },
+  "optionsEyebrow": {
+    "message": "Browser Extension",
+    "description": "Options page eyebrow"
+  },
+  "optionsLead": {
+    "message": "Detect source maps that contain embedded sources and export the recovered files as ZIP archives.",
+    "description": "Options page lead text"
+  },
+  "optionsVersion": {
+    "message": "Version",
+    "description": "Options metric label"
+  },
+  "optionsCachedMaps": {
+    "message": "Stored Versions",
+    "description": "Options metric label"
+  },
+  "optionsTrackedPages": {
+    "message": "Tracked Pages",
+    "description": "Options metric label"
+  },
+  "optionsWhatItDoesTitle": {
+    "message": "What It Does",
+    "description": "Options section title"
+  },
+  "optionsWhatItDoesBody": {
+    "message": "SourceD watches JavaScript requests, locates <code>sourceMappingURL</code>, keeps only valid source maps with <code>sourcesContent</code>, and lets you download the reconstructed source tree from the popup.",
+    "description": "Options section body"
+  },
+  "optionsPermissionsTitle": {
+    "message": "Permissions",
+    "description": "Options section title"
+  },
+  "optionsPermissionWebRequest": {
+    "message": "<code>webRequest</code> to detect JavaScript files that may reference a source map",
+    "description": "Permission explanation"
+  },
+  "optionsPermissionDownloads": {
+    "message": "<code>downloads</code> to save recovered source archives",
+    "description": "Permission explanation"
+  },
+  "optionsPermissionTabs": {
+    "message": "<code>tabs</code> to associate findings with the active page",
+    "description": "Permission explanation"
+  },
+  "optionsPermissionStorage": {
+    "message": "<code>storage</code> to keep map metadata and content locally",
+    "description": "Permission explanation"
+  },
+  "optionsPermissionHosts": {
+    "message": "<code>&lt;all_urls&gt;</code> because source maps may be hosted on any origin",
+    "description": "Permission explanation"
+  },
+  "optionsPrivacyTitle": {
+    "message": "Privacy",
+    "description": "Options section title"
+  },
+  "optionsPrivacyLocal": {
+    "message": "Processing happens locally inside the browser extension",
+    "description": "Privacy bullet"
+  },
+  "optionsPrivacyNoRemote": {
+    "message": "No collected map data is sent to a remote service by this project",
+    "description": "Privacy bullet"
+  },
+  "optionsPrivacyClear": {
+    "message": "You can clear cached data from the popup menu at any time",
+    "description": "Privacy bullet"
+  },
+  "optionsResponsibleTitle": {
+    "message": "Responsible Use",
+    "description": "Options section title"
+  },
+  "optionsResponsibleBody": {
+    "message": "Use SourceD only where you are authorized to inspect deployed assets or recover embedded sources. Source map exposure can still be subject to licensing, policy, and legal constraints.",
+    "description": "Responsible use paragraph"
+  },
+  "optionsHistoryTitle": {
+    "message": "History Dashboard",
+    "description": "Options history section title"
+  },
+  "optionsHistoryBody": {
+    "message": "Open the full dashboard to browse tracked pages, inspect version history, review storage distribution, and adjust cleanup settings.",
+    "description": "Options dashboard description"
+  },
+  "optionsDistributionTitle": {
+    "message": "Data Distribution",
+    "description": "Options distribution section title"
+  },
+  "optionsSettingsTitle": {
+    "message": "Settings",
+    "description": "Options settings section title"
+  },
+  "optionsSettingRetentionDays": {
+    "message": "Retention Days",
+    "description": "Setting label"
+  },
+  "optionsSettingMaxVersions": {
+    "message": "Max Versions Per Page",
+    "description": "Setting label"
+  },
+  "optionsSettingAutoCleanup": {
+    "message": "Automatically prune old history",
+    "description": "Setting label"
+  },
+  "optionsSaveSettings": {
+    "message": "Save Settings",
+    "description": "Save button"
+  },
+  "optionsSaving": {
+    "message": "Saving...",
+    "description": "Saving status"
+  },
+  "optionsSaved": {
+    "message": "Saved",
+    "description": "Saved status"
+  },
+  "optionsDeleteVersion": {
+    "message": "Delete",
+    "description": "Delete version button"
+  },
+  "optionsVersionSeenAt": {
+    "message": "Seen at $1",
+    "description": "Version last seen text"
+  },
+  "optionsVersionsUnit": {
+    "message": "versions",
+    "description": "Versions unit"
+  },
+  "optionsMapsUnit": {
+    "message": "maps",
+    "description": "Maps unit"
+  },
+  "optionsEmptyHistory": {
+    "message": "No history yet.",
+    "description": "Empty history text"
+  },
+  "optionsEmptyDistribution": {
+    "message": "No data yet.",
+    "description": "Empty distribution text"
+  },
+  "optionsOpenDashboard": {
+    "message": "Open History Dashboard",
+    "description": "Open dashboard button"
+  },
+  "popupClearMenuOlderThan7d": {
+    "message": "Clear data older than 7 days",
+    "description": "Clear menu item"
+  },
+  "popupClearMenuAll": {
+    "message": "Clear all",
+    "description": "Clear menu item"
+  },
+  "popupHeaderTitle": {
+    "message": "SourceD",
+    "description": "Popup header title"
+  },
+  "popupClearButton": {
+    "message": "Clear Current Page",
+    "description": "Popup clear button label"
+  },
+  "popupEmptyTitle": {
+    "message": "No source files detected",
+    "description": "Popup empty state title"
+  },
+  "popupEmptyHint": {
+    "message": "Visit a site that exposes source maps and SourceD will detect them automatically",
+    "description": "Popup empty state hint"
+  },
+  "popupDownloadAll": {
+    "message": "Download all",
+    "description": "Popup download button label"
+  },
+  "popupStoredVersions": {
+    "message": "$1 versions",
+    "description": "Popup stored versions stat"
+  },
+  "popupStorageUsed": {
+    "message": "$1 used",
+    "description": "Popup storage stat"
+  },
+  "popupOpenHistory": {
+    "message": "History",
+    "description": "Popup open history button"
+  },
+  "popupLoading": {
+    "message": "Loading current page data...",
+    "description": "Popup loading state"
+  },
+  "popupLatestVersion": {
+    "message": "Latest version: $1",
+    "description": "Popup latest version label"
+  },
+  "popupLastUpdated": {
+    "message": "Last updated: $1",
+    "description": "Popup last updated tooltip"
+  },
+  "popupStorageSegTitle": {
+    "message": "$1  $2  ($3 files)",
+    "description": "Popup storage segment tooltip"
+  },
+  "dashboardPageTitle": {
+    "message": "SourceD History",
+    "description": "Dashboard page title"
+  },
+  "dashboardEyebrow": {
+    "message": "Source Map Archive",
+    "description": "Dashboard eyebrow"
+  },
+  "dashboardTitle": {
+    "message": "SourceD History",
+    "description": "Dashboard title"
+  },
+  "dashboardLead": {
+    "message": "Browse every tracked page, inspect each captured version, review storage distribution, and adjust retention settings.",
+    "description": "Dashboard lead"
+  },
+  "dashboardRefresh": {
+    "message": "Refresh",
+    "description": "Dashboard refresh button"
+  },
+  "dashboardTotalPages": {
+    "message": "Tracked Pages",
+    "description": "Dashboard metric"
+  },
+  "dashboardTotalVersions": {
+    "message": "Stored Versions",
+    "description": "Dashboard metric"
+  },
+  "dashboardTotalStorage": {
+    "message": "Storage Used",
+    "description": "Dashboard metric"
+  },
+  "dashboardHistoryTitle": {
+    "message": "History",
+    "description": "Dashboard section title"
+  },
+  "dashboardHistoryCopy": {
+    "message": "Pages are grouped first. Expand a page to inspect each captured version and its source map tree.",
+    "description": "Dashboard history description"
+  },
+  "dashboardDistributionTitle": {
+    "message": "Data Distribution",
+    "description": "Dashboard section title"
+  },
+  "dashboardDistributionCopy": {
+    "message": "Storage is summarized by origin so you can see where the archive grows fastest.",
+    "description": "Dashboard distribution description"
+  },
+  "dashboardSettingsTitle": {
+    "message": "Settings",
+    "description": "Dashboard section title"
+  },
+  "dashboardSettingsCopy": {
+    "message": "History cleanup runs against the limits configured below.",
+    "description": "Dashboard settings description"
+  },
+  "dashboardSettingRetentionDays": {
+    "message": "Retention Days",
+    "description": "Dashboard setting label"
+  },
+  "dashboardSettingMaxVersions": {
+    "message": "Max Versions Per Page",
+    "description": "Dashboard setting label"
+  },
+  "dashboardSettingAutoCleanup": {
+    "message": "Automatically prune old history",
+    "description": "Dashboard setting label"
+  },
+  "dashboardSaveSettings": {
+    "message": "Save Settings",
+    "description": "Dashboard save button"
+  },
+  "dashboardSaving": {
+    "message": "Saving...",
+    "description": "Dashboard saving status"
+  },
+  "dashboardSaved": {
+    "message": "Saved",
+    "description": "Dashboard saved status"
+  },
+  "dashboardLoading": {
+    "message": "Loading...",
+    "description": "Dashboard loading"
+  },
+  "dashboardLoadingVersion": {
+    "message": "Loading version details...",
+    "description": "Dashboard loading version details"
+  },
+  "dashboardEmptyHistory": {
+    "message": "No history yet.",
+    "description": "Dashboard empty history"
+  },
+  "dashboardEmptyDistribution": {
+    "message": "No distribution data yet.",
+    "description": "Dashboard empty distribution"
+  },
+  "dashboardEmptyVersionFiles": {
+    "message": "No files in this version.",
+    "description": "Dashboard empty version files"
+  },
+  "dashboardLastUpdated": {
+    "message": "Updated $1",
+    "description": "Dashboard page update label"
+  },
+  "dashboardCapturedAt": {
+    "message": "$1",
+    "description": "Dashboard version capture time"
+  },
+  "dashboardMapCount": {
+    "message": "$1 maps",
+    "description": "Dashboard map count"
+  },
+  "dashboardDeleteVersion": {
+    "message": "Delete",
+    "description": "Dashboard delete version button"
+  },
+  "dashboardDownloadVersion": {
+    "message": "Download version",
+    "description": "Dashboard single version download button"
+  },
+  "dashboardVersionFiles": {
+    "message": "$1 files",
+    "description": "Dashboard version files count"
+  },
+  "dashboardDistributionVersions": {
+    "message": "$1 versions",
+    "description": "Dashboard distribution versions"
+  },
+  "dashboardDistributionMaps": {
+    "message": "$1 maps",
+    "description": "Dashboard distribution maps"
+  },
+  "dashboardDomainSummary": {
+    "message": "$1 pages · $2 versions",
+    "description": "Dashboard domain summary"
+  }
+}
