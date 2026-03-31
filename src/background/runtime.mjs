@@ -33,6 +33,10 @@ import {
   scheduleSessionPersist,
 } from "./sessions.mjs";
 
+function errorMessage(err) {
+  return err && err.message ? err.message : String(err);
+}
+
 export function registerRuntimeListeners() {
   chrome.tabs.onRemoved.addListener((tabId) => {
     cleanupTabSession(tabId);
@@ -200,6 +204,12 @@ export function registerRuntimeListeners() {
             settings: currentSettings(),
             totalVersions: Object.keys(state.versionIndex).length,
           });
+        })
+        .catch((err) => {
+          sendResponse({
+            ok: false,
+            error: errorMessage(err),
+          });
         });
       return true;
     }
@@ -210,6 +220,8 @@ export function registerRuntimeListeners() {
         refreshBadgeForActiveTab();
         broadcastSummary();
         sendResponse({ ok: true });
+      }).catch((err) => {
+        sendResponse({ ok: false, error: errorMessage(err) });
       });
       return true;
     }
@@ -219,6 +231,8 @@ export function registerRuntimeListeners() {
       deletePageHistoryAndSessions(targetPageUrl).then(() => {
         broadcastSummary();
         sendResponse({ ok: true });
+      }).catch((err) => {
+        sendResponse({ ok: false, error: errorMessage(err) });
       });
       return true;
     }
@@ -227,6 +241,8 @@ export function registerRuntimeListeners() {
       deleteSiteHistoryAndSessions(message.siteKey || "").then(() => {
         broadcastSummary();
         sendResponse({ ok: true });
+      }).catch((err) => {
+        sendResponse({ ok: false, error: errorMessage(err) });
       });
       return true;
     }
@@ -300,6 +316,8 @@ export function registerRuntimeListeners() {
 
 export function initializeRuntime() {
   chrome.action.setBadgeText({ text: "" });
-  registerRuntimeListeners();
-  return Promise.all([ensureStorageReady(), loadSettings()]);
+  return Promise.all([ensureStorageReady(), loadSettings()]).then((results) => {
+    registerRuntimeListeners();
+    return results;
+  });
 }

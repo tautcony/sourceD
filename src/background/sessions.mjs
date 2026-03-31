@@ -96,7 +96,6 @@ export function upsertSessionVersion(session) {
   if (session.versionId && session.versionOwned) {
     const previousMeta = state.versionIndex[session.versionId];
     const updatedMeta = buildMetaForSession(session, artifacts, session.versionId);
-    session.signature = artifacts.signature;
     return persistVersionState(updatedMeta, artifacts.refs, artifacts.blobs, previousMeta)
       .then(() => sortPageVersions(session.pageUrl))
       .then(() => {
@@ -104,6 +103,7 @@ export function upsertSessionVersion(session) {
         return null;
       })
       .then(() => {
+        session.signature = artifacts.signature;
         refreshBadgeForTab(session.tabId, session.pageUrl);
         broadcastSummary();
       });
@@ -114,21 +114,26 @@ export function upsertSessionVersion(session) {
   });
 
   if (matchingId) {
-    session.versionId = matchingId;
-    session.versionOwned = false;
-    session.signature = artifacts.signature;
-    refreshBadgeForTab(session.tabId, session.pageUrl);
-    return Promise.resolve();
+    const previousMeta = state.versionIndex[matchingId];
+    const nextMeta = Object.assign({}, previousMeta, {
+      title: session.title,
+      lastSeenAt: new Date().toISOString(),
+      tabId: session.tabId,
+    });
+
+    return persistVersionState(nextMeta, artifacts.refs, artifacts.blobs, previousMeta)
+      .then(() => sortPageVersions(session.pageUrl))
+      .then(() => {
+        session.versionId = matchingId;
+        session.versionOwned = false;
+        session.signature = artifacts.signature;
+        refreshBadgeForTab(session.tabId, session.pageUrl);
+        broadcastSummary();
+      });
   }
 
   const newId = `${session.pageUrl}::${Date.now()}::${Math.random().toString(36).slice(2, 8)}`;
   const meta = buildMetaForSession(session, artifacts, newId);
-  session.versionId = newId;
-  session.versionOwned = true;
-  session.signature = artifacts.signature;
-  ensurePageBucket(session.pageUrl).unshift(newId);
-  state.versionIndex[newId] = meta;
-  sortPageVersions(session.pageUrl);
 
   return persistVersionState(meta, artifacts.refs, artifacts.blobs, null)
     .then(() => {
@@ -136,6 +141,12 @@ export function upsertSessionVersion(session) {
       return null;
     })
     .then(() => {
+      session.versionId = newId;
+      session.versionOwned = true;
+      session.signature = artifacts.signature;
+      ensurePageBucket(session.pageUrl).unshift(newId);
+      state.versionIndex[newId] = meta;
+      sortPageVersions(session.pageUrl);
       refreshBadgeForTab(session.tabId, session.pageUrl);
       broadcastSummary();
     });

@@ -560,12 +560,11 @@ export function importSourceMapsForPage(payload) {
     tabId: null,
   };
 
-  ensurePageBucket(pageUrl).unshift(versionId);
-  state.versionIndex[versionId] = meta;
-  sortPageVersions(pageUrl);
-
   return persistVersionState(meta, refs, blobs, null)
     .then(() => {
+      ensurePageBucket(pageUrl).unshift(versionId);
+      state.versionIndex[versionId] = meta;
+      sortPageVersions(pageUrl);
       if (currentSettings().autoCleanup) return prunePageHistory(pageUrl);
       return null;
     })
@@ -632,6 +631,7 @@ export function buildCompactedStorageState(db, metas) {
     const desiredRefs = [];
     const desiredBlobs = {};
     const invalidVersionMap = {};
+    const validRefsByVersion = {};
 
     existingBlobs.forEach((blob) => {
       existingBlobMap[blob.id] = blob;
@@ -658,17 +658,12 @@ export function buildCompactedStorageState(db, metas) {
       }
 
       if (content == null) {
-        invalidVersionMap[meta.id] = {
-          id: meta.id,
-          pageUrl: meta.pageUrl,
-          reason: "all_maps_missing",
-          mapCount: meta.mapUrls ? meta.mapUrls.length : 0,
-        };
         return;
       }
 
       if (!mapHash) mapHash = hashString(content);
       if (!blobId) blobId = blobStoreKey(siteKey, mapHash);
+      validRefsByVersion[meta.id] = (validRefsByVersion[meta.id] || 0) + 1;
 
       desiredRefs.push({
         key: entry.key,
@@ -694,6 +689,16 @@ export function buildCompactedStorageState(db, metas) {
         };
       }
       desiredBlobs[blobId].refCount++;
+    });
+
+    metas.forEach((meta) => {
+      if ((validRefsByVersion[meta.id] || 0) > 0) return;
+      invalidVersionMap[meta.id] = {
+        id: meta.id,
+        pageUrl: meta.pageUrl,
+        reason: "all_maps_missing",
+        mapCount: meta.mapUrls ? meta.mapUrls.length : 0,
+      };
     });
 
     return {
