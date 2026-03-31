@@ -11,7 +11,6 @@ export default [
       "dist/**",
       "node_modules/**",
       "releases/**",
-      "vendor/**",
     ],
   },
   js.configs.recommended,

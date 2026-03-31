@@ -167,14 +167,6 @@
     "message": "Open History Dashboard",
     "description": "Open dashboard button"
   },
-  "popupClearMenuOlderThan7d": {
-    "message": "Clear data older than 7 days",
-    "description": "Clear menu item"
-  },
-  "popupClearMenuAll": {
-    "message": "Clear all",
-    "description": "Clear menu item"
-  },
   "popupHeaderTitle": {
     "message": "SourceD",
     "description": "Popup header title"

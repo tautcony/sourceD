@@ -16,15 +16,14 @@ This repository is currently structured as a lightweight unpacked extension for 
 ## Install
 
 1. Run `npm install`
-2. Run `npm run build:vendor` if you need to rebuild browser vendor assets manually
+2. Run `npm run build`
 3. Open `chrome://extensions` or `edge://extensions`
 4. Enable `Developer mode`
 5. Click `Load unpacked`
-6. Select this repository root
+6. Select the generated `dist/` directory
 
 ## Build And Package
 
-- `npm run build:vendor`: refresh vendor runtime files under `vendor/`
 - `npm run build`: create a clean unpacked release under `dist/`
 - `npm run build:debug`: create an unpacked debug build with linked `.map` files and non-minified bundles
 - `npm run package`: build `dist/` and create a zip under `releases/`
@@ -59,7 +58,7 @@ Use this project only for debugging, security research, incident response, or ot
 
 ## Development
 
-The repo uses npm for dependency management. Runtime browser assets are generated into `vendor/`, and release builds are assembled into `dist/`.
+The repo uses npm for dependency management. Runtime code is bundled directly by esbuild into `bundles/`, and release builds are assembled into `dist/`.
 
 Project layout:
 
@@ -74,7 +73,6 @@ Project layout:
 - `src/options/App.jsx`: options/about page UI
 - `src/options/entry.jsx`: options bundle entry
 - `src/shared/utils.mjs`: shared UI and path/formatting helpers
-- `scripts/build-vendor.mjs`: vendor build step
 - `scripts/build-dist.mjs`: assemble release files into `dist/`
 - `scripts/package-release.mjs`: zip `dist/` into `releases/`
 - `bundles/`: esbuild output for background/popup/dashboard/options
@@ -86,10 +84,14 @@ Runtime browser-side dependencies currently used by this repo:
 
 - `jszip` (`MIT OR GPL-3.0-or-later`)
 - `source-map-js` (`BSD-3-Clause`)
-- `tiny-react` (`MIT`)
+- `react` (`MIT`)
+- `react-dom` (`MIT`)
+- `antd` (`MIT`)
+- `@ant-design/icons` (`MIT`)
+- `highlight.js` (`BSD-3-Clause`)
 - `lodash` (`MIT`)
 
-See [NOTICE.md](NOTICE.md) and the license files under `node_modules/` after `npm install` for details.
+See the license files under `node_modules/` after `npm install` for details.
 
 ## Release Checklist
 

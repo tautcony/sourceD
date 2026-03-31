@@ -167,14 +167,6 @@
     "message": "打开历史面板",
     "description": "打开面板按钮"
   },
-  "popupClearMenuOlderThan7d": {
-    "message": "清除 7 天前的数据",
-    "description": "弹窗清理菜单"
-  },
-  "popupClearMenuAll": {
-    "message": "清空全部",
-    "description": "弹窗清理菜单"
-  },
   "popupHeaderTitle": {
     "message": "SourceD",
     "description": "弹窗标题"

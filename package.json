@@ -8,17 +8,15 @@
     "url": "git+https://github.com/tautcony/sourceD.git"
   },
   "scripts": {
-    "build:vendor": "node scripts/build-vendor.mjs",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); require('fs').rmSync('releases',{recursive:true,force:true})\"",
-    "build": "npm run build:vendor && node scripts/build-dist.mjs",
-    "build:debug": "npm run build:vendor && node scripts/build-dist.mjs --dev --sourcemap",
+    "build": "node scripts/build-dist.mjs",
+    "build:debug": "node scripts/build-dist.mjs --dev --sourcemap",
     "check:manifest": "node -e \"JSON.parse(require('fs').readFileSync('manifest.json', 'utf8')); JSON.parse(require('fs').readFileSync('_locales/en/messages.json', 'utf8')); console.log('manifest json ok')\"",
     "lint": "eslint .",
     "package": "npm run build && node scripts/package-release.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:watch": "vitest",
-    "prepare": "npm run build:vendor"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.1",
