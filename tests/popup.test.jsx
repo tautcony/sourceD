@@ -133,6 +133,13 @@ describe("PopupApp", () => {
     expect(chrome.tabs.create).toHaveBeenCalledWith({ url: "chrome-extension://fakeid/dashboard.html" });
   });
 
+  it("clicking github icon opens repository", async () => {
+    chrome.tabs.create = vi.fn();
+    render(<PopupApp />);
+    fireEvent.click(screen.getByRole("button", { name: "Open GitHub repository" }));
+    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: "https://github.com/tautcony/sourceD" });
+  });
+
   it("clicking clear button triggers deletePageHistory", async () => {
     mockPopupState({
       latestVersion: { id: "v1", label: "v1", createdAt: "2026-01-01T00:00:00Z", mapCount: 1, byteSize: 100 },

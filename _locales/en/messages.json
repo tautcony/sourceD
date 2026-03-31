@@ -207,6 +207,10 @@
     "message": "History",
     "description": "Popup open history button"
   },
+  "popupOpenGithub": {
+    "message": "Open GitHub repository",
+    "description": "Popup GitHub repository button"
+  },
   "popupDetectionToggle": {
     "message": "Detect",
     "description": "Popup detection toggle label"

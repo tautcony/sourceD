@@ -207,6 +207,10 @@
     "message": "历史面板",
     "description": "弹窗打开历史按钮"
   },
+  "popupOpenGithub": {
+    "message": "打开 GitHub 仓库",
+    "description": "弹窗 GitHub 仓库按钮"
+  },
   "popupDetectionToggle": {
     "message": "检测",
     "description": "弹窗检测开关标签"

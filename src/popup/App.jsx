@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Button, Space, Typography, Tree, Empty, Spin, Flex, ConfigProvider, Switch, theme } from "antd";
-import { DownloadOutlined, HistoryOutlined, DeleteOutlined, FolderOutlined, FileOutlined } from "@ant-design/icons";
+import { Button, Space, Tooltip, Typography, Tree, Empty, Spin, Flex, ConfigProvider, Switch, theme } from "antd";
+import { DownloadOutlined, HistoryOutlined, DeleteOutlined, FolderOutlined, FileOutlined, GithubOutlined } from "@ant-design/icons";
 import { i18nMessage, fileSizeIEC, parseFileName, sourceMapTreePath, sanitizeFilename } from "../shared/utils.mjs";
 import { parseSourceMap, downloadGroup } from "./sourcemap.mjs";
 
 const { Text, Link: AntLink } = Typography;
+const REPOSITORY_URL = "https://github.com/tautcony/sourceD";
 
 function buildMapTree(files) {
   const root = { folders: {}, files: [] };
@@ -121,6 +122,10 @@ export default function PopupApp() {
     chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
   }, []);
 
+  const handleOpenRepository = useCallback(() => {
+    chrome.tabs.create({ url: REPOSITORY_URL });
+  }, []);
+
   const handleToggleDetection = useCallback((checked) => {
     setTogglingDetection(true);
     chrome.runtime.sendMessage({
@@ -195,6 +200,15 @@ export default function PopupApp() {
               <Switch checked={detectionEnabled} loading={togglingDetection} onChange={handleToggleDetection} />
             </Flex>
             <Space size="middle">
+              <Tooltip title={i18nMessage("popupOpenGithub")}>
+                <Button
+                  size="middle"
+                  aria-label={i18nMessage("popupOpenGithub")}
+                  icon={<GithubOutlined />}
+                  onClick={handleOpenRepository}
+                  style={{ width: 34, minWidth: 34, height: 34, paddingInline: 0 }}
+                />
+              </Tooltip>
               <Button size="middle" icon={<HistoryOutlined />} onClick={handleOpenHistory} style={{ minWidth: 96, height: 34 }}>
                 {i18nMessage("popupOpenHistory")}
               </Button>

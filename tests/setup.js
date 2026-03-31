@@ -40,6 +40,7 @@ globalThis.chrome = {
         commonUnknown: "Unknown",
         popupHeaderTitle: "SourceD",
         popupOpenHistory: "History",
+        popupOpenGithub: "Open GitHub repository",
         popupClearButton: "Clear Current Page",
         popupLoading: "Loading current page data...",
         popupEmptyTitle: "No source files detected",

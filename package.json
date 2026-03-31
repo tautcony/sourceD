@@ -4,7 +4,8 @@
   "description": "Manifest V3 extension for detecting source maps with embedded sources and downloading recovered files.",
   "license": "GPL-3.0-or-later",
   "repository": {
-    "type": "git"
+    "type": "git",
+    "url": "git+https://github.com/tautcony/sourceD.git"
   },
   "scripts": {
     "build:vendor": "node scripts/build-vendor.mjs",

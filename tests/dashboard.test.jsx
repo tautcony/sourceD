@@ -445,17 +445,12 @@ describe("DashboardApp", () => {
     render(<DashboardApp />);
     await screen.findByText((content) => content.includes(longSiteKey));
 
-    // Expand all panels
+    // Expand only the levels required to render the version header.
     fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
     await waitFor(() => screen.getByText((content) => content.includes("Example App")));
     fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
-
-    await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "Delete" }).length).toBeGreaterThan(0);
-    });
-    const versionHeaderNode = screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header");
+    const versionTitle = await screen.findByText((content) => content.includes("v1.0.0-beta"));
+    const versionHeaderNode = versionTitle.closest(".ant-collapse-header");
     const deleteBtn = within(versionHeaderNode).getByRole("button", { name: "Delete" });
     fireEvent.click(deleteBtn);
 
