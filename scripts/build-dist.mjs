@@ -4,6 +4,9 @@ import { build } from "esbuild";
 const DIST_DIR = "dist";
 
 const BUNDLES_DIR = "bundles";
+const args = new Set(process.argv.slice(2));
+const enableSourceMap = args.has("--sourcemap");
+const isDevBuild = args.has("--dev");
 
 // Bundle JSX pages with esbuild (output to root bundles/ for dev loading)
 const commonOptions = {
@@ -11,9 +14,10 @@ const commonOptions = {
   format: "iife",
   platform: "browser",
   target: ["chrome110"],
-  define: { "process.env.NODE_ENV": '"production"' },
+  define: { "process.env.NODE_ENV": isDevBuild ? '"development"' : '"production"' },
   jsx: "automatic",
-  minify: true,
+  minify: !isDevBuild,
+  sourcemap: enableSourceMap ? "linked" : false,
   logLevel: "info",
 };
 

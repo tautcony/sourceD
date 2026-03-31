@@ -207,6 +207,10 @@
     "message": "History",
     "description": "Popup open history button"
   },
+  "popupDetectionToggle": {
+    "message": "Detect",
+    "description": "Popup detection toggle label"
+  },
   "popupLoading": {
     "message": "Loading current page data...",
     "description": "Popup loading state"
@@ -372,15 +376,19 @@
     "description": "Dashboard source preview empty state"
   },
   "dashboardCleanup": {
-    "message": "Clean up",
+    "message": "Optimize Storage",
     "description": "Dashboard cleanup button"
   },
   "dashboardCleanupDone": {
-    "message": "Cleaned $1 invalid versions",
-    "description": "Dashboard cleanup result message"
+    "message": "Abnormal data cleaned: $1 versions",
+    "description": "Dashboard abnormal cleanup result message"
+  },
+  "dashboardCleanupOptimized": {
+    "message": "Storage optimized: $1 maps, $2 reclaimed",
+    "description": "Dashboard storage optimization result message"
   },
   "dashboardCleanupNone": {
-    "message": "No invalid data found",
+    "message": "No abnormal data found and no storage optimization was needed",
     "description": "Dashboard cleanup nothing to clean message"
   }
 }

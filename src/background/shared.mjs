@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS = {
   retentionDays: 30,
   maxVersionsPerPage: 10,
   autoCleanup: true,
+  detectionEnabled: true,
 };
 
 export const state = {
@@ -25,7 +26,17 @@ export const state = {
 export function setBadgeText(num, tabId) {
   const payload = { text: num > 0 ? String(num) : "" };
   if (tabId != null) payload.tabId = tabId;
-  chrome.action.setBadgeText(payload);
+
+  try {
+    const maybePromise = chrome.action.setBadgeText(payload);
+    if (maybePromise && typeof maybePromise.catch === "function") {
+      maybePromise.catch(() => {
+        // Ignore races where the tab no longer exists by the time badge state updates.
+      });
+    }
+  } catch {
+    // Ignore races where the tab no longer exists by the time badge state updates.
+  }
 }
 
 export function canonicalPageUrl(url) {

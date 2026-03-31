@@ -595,6 +595,10 @@ export function buildCompactedStorageState(db, metas) {
 
 export function compactStorageData() {
   return ensureStorageReady().then((db) => listAllVersionsRaw(db).then((metas) => {
+    const beforeVersionCount = metas.length;
+    const beforeMapCount = Object.keys(state.blobIndex).length;
+    const beforeBytes = totalStorageBytes();
+
     return buildCompactedStorageState(db, metas).then((storageState) => {
       const invalidMap = {};
       storageState.invalidVersions.forEach((item) => {
@@ -631,7 +635,17 @@ export function compactStorageData() {
     }).then((storageState) => Promise.all([listAllVersionsRaw(db), listAllBlobsRaw(db)]).then((results) => {
       rebuildIndexes(results[0] || [], results[1] || []);
       refreshBadgeForActiveTab();
-      return storageState;
+      return {
+        invalidVersions: storageState.invalidVersions,
+        stats: {
+          removedVersions: Math.max(0, beforeVersionCount - results[0].length),
+          removedMaps: Math.max(0, beforeMapCount - results[1].length),
+          reclaimedBytes: Math.max(0, beforeBytes - totalStorageBytes()),
+          remainingVersions: results[0].length,
+          remainingMaps: results[1].length,
+          remainingBytes: totalStorageBytes(),
+        },
+      };
     }));
   }));
 }
@@ -649,9 +663,33 @@ export function clearSessionsForPage(pageUrl) {
   });
 }
 
+export function clearSessionsForSiteKey(siteKey) {
+  Object.keys(state.tabSessions).forEach((tabId) => {
+    const session = state.tabSessions[tabId];
+    if (!session || pageSiteKey(session.pageUrl) !== siteKey) return;
+    if (session.timer) clearTimeout(session.timer);
+    session.maps = {};
+    session.versionId = null;
+    session.versionOwned = false;
+    session.signature = null;
+    refreshBadgeForTab(Number(tabId), session.pageUrl);
+  });
+}
+
 export function deletePageHistoryAndSessions(pageUrl) {
   return deletePageHistory(pageUrl).then(() => {
     clearSessionsForPage(pageUrl);
+    refreshBadgeForActiveTab();
+  });
+}
+
+export function deleteSiteHistoryAndSessions(siteKey) {
+  const pageUrls = Object.keys(state.versionsByPage).filter((pageUrl) => pageSiteKey(pageUrl) === siteKey);
+  const versionIds = pageUrls.flatMap((pageUrl) => (state.versionsByPage[pageUrl] || []).slice());
+
+  return deleteVersions(versionIds).then(() => {
+    removeVersionsFromIndexes(versionIds);
+    clearSessionsForSiteKey(siteKey);
     refreshBadgeForActiveTab();
   });
 }

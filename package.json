@@ -10,6 +10,7 @@
     "build:vendor": "node scripts/build-vendor.mjs",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); require('fs').rmSync('releases',{recursive:true,force:true})\"",
     "build": "npm run build:vendor && node scripts/build-dist.mjs",
+    "build:debug": "npm run build:vendor && node scripts/build-dist.mjs --dev --sourcemap",
     "check:manifest": "node -e \"JSON.parse(require('fs').readFileSync('manifest.json', 'utf8')); JSON.parse(require('fs').readFileSync('_locales/en/messages.json', 'utf8')); console.log('manifest json ok')\"",
     "lint": "eslint .",
     "package": "npm run build && node scripts/package-release.mjs",

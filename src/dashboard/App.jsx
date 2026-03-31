@@ -191,7 +191,7 @@ function groupPagesByDomain(pages) {
 
 // ─── Version Panel ──────────────────────────────────────────────────────────────
 
-function VersionPanel({ version, onReload }) {
+function VersionPanel({ version }) {
   const [files, setFiles] = useState(null);
   const [loadingFiles, setLoadingFiles] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -211,12 +211,6 @@ function VersionPanel({ version, onReload }) {
     downloadGroup(files, null, versionZipBaseName(files, version))
       .catch((err) => console.error("[SourceD] version download failed:", err));
   }, [files, version]);
-
-  const handleDelete = useCallback(() => {
-    chrome.runtime.sendMessage({ action: "deleteVersion", versionId: version.id }, () => {
-      onReload();
-    });
-  }, [version.id, onReload]);
 
   const handlePreview = useCallback(() => {
     /* c8 ignore next */
@@ -281,9 +275,6 @@ function VersionPanel({ version, onReload }) {
           </Button>
           <Button size="small" icon={<DownloadOutlined />} onClick={handleDownload}>
             {i18nMessage("dashboardDownloadVersion")}
-          </Button>
-          <Button size="small" danger icon={<DeleteOutlined />} onClick={handleDelete}>
-            {i18nMessage("dashboardDeleteVersion")}
           </Button>
         </Space>
       </Flex>
@@ -389,7 +380,7 @@ function SettingsSection({ settings, onReload }) {
 
 // ─── Main Dashboard App ─────────────────────────────────────────────────────────
 
-export default function DashboardApp() {
+function DashboardContent() {
   const { message } = App.useApp();
   const [loading, setLoading] = useState(true);
   const [pages, setPages] = useState([]);
@@ -415,28 +406,71 @@ export default function DashboardApp() {
     document.documentElement.lang = /^zh\b/i.test(locale) ? "zh-CN" : "en";
     document.title = i18nMessage("dashboardPageTitle");
     loadData();
-  }, [loadData, message]);
+  }, [loadData]);
 
   const [cleaning, setCleaning] = useState(false);
   const handleCleanup = useCallback(() => {
     setCleaning(true);
     chrome.runtime.sendMessage({ action: "cleanupData" }, (resp) => {
       setCleaning(false);
-      if (resp?.ok && resp.cleaned?.length > 0) {
-        const details = resp.cleaned.map((v) => `${v.pageUrl} (${v.reason}, ${v.mapCount} maps)`).join("\n");
-        message.success({
-          content: i18nMessage("dashboardCleanupDone", [String(resp.cleaned.length)]),
-          duration: 5,
-        });
-        console.info("[SourceD] Cleaned versions:\n" + details);
-        loadData();
+      if (!resp?.ok) {
+        message.error(resp?.error || "Cleanup failed");
+        return;
       } else {
-        message.info(i18nMessage("dashboardCleanupNone"));
+        const details = (resp.cleaned || []).map((v) => `${v.pageUrl} (${v.reason}, ${v.mapCount} maps)`).join("\n");
+        const stats = resp.stats || {};
+        const reclaimedBytes = Number(stats.reclaimedBytes) || 0;
+        const removedVersions = Number(stats.removedVersions) || 0;
+        const removedMaps = Number(stats.removedMaps) || 0;
+        const changed = reclaimedBytes > 0 || removedVersions > 0 || removedMaps > 0 || (resp.cleaned || []).length > 0;
+
+        if (changed) {
+          const cleanedCount = removedVersions || (resp.cleaned || []).length;
+          const content = `${i18nMessage("dashboardCleanupDone", [String(cleanedCount)])} · ${i18nMessage("dashboardCleanupOptimized", [String(removedMaps), fileSizeIEC(reclaimedBytes)])}`;
+          message.success({
+            content,
+            duration: 5,
+          });
+        } else {
+          message.info(i18nMessage("dashboardCleanupNone"));
+        }
+
+        if (details) {
+          console.info("[SourceD] Cleaned versions:\n" + details);
+        }
+
+        loadData();
       }
     });
   }, [loadData, message]);
 
   const groups = useMemo(() => groupPagesByDomain(pages), [pages]);
+
+  const stopHeaderAction = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
+
+  const handleDeleteVersion = useCallback((event, versionId) => {
+    stopHeaderAction(event);
+    chrome.runtime.sendMessage({ action: "deleteVersion", versionId }, () => {
+      loadData();
+    });
+  }, [loadData, stopHeaderAction]);
+
+  const handleDeletePage = useCallback((event, pageUrl) => {
+    stopHeaderAction(event);
+    chrome.runtime.sendMessage({ action: "deletePageHistory", pageUrl }, () => {
+      loadData();
+    });
+  }, [loadData, stopHeaderAction]);
+
+  const handleDeleteSite = useCallback((event, siteKey) => {
+    stopHeaderAction(event);
+    chrome.runtime.sendMessage({ action: "deleteSiteHistory", siteKey }, () => {
+      loadData();
+    });
+  }, [loadData, stopHeaderAction]);
 
   const domainCollapseItems = useMemo(() => {
     return groups.map((group) => ({
@@ -457,6 +491,15 @@ export default function DashboardApp() {
             <Text type="secondary" style={{ fontSize: 12 }}>
               {i18nMessage("dashboardLastUpdated", [formatShortDate(group.lastSeenAt)])}
             </Text>
+            <Button
+              size="small"
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+                  title={i18nMessage("dashboardDeleteVersion")}
+                  aria-label={i18nMessage("dashboardDeleteVersion")}
+                  onClick={(event) => handleDeleteSite(event, group.siteKey)}
+                />
           </Flex>
         </Flex>
       ),
@@ -477,6 +520,15 @@ export default function DashboardApp() {
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     {i18nMessage("dashboardLastUpdated", [formatShortDate(page.versions[0]?.lastSeenAt)])}
                   </Text>
+                  <Button
+                    size="small"
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    title={i18nMessage("dashboardDeleteVersion")}
+                    aria-label={i18nMessage("dashboardDeleteVersion")}
+                    onClick={(event) => handleDeletePage(event, page.pageUrl)}
+                  />
                 </Flex>
               </Flex>
             ),
@@ -494,10 +546,19 @@ export default function DashboardApp() {
                       <Flex gap={4} wrap="wrap" style={{ flexShrink: 0, marginLeft: 8 }}>
                         <Tag>{i18nMessage("dashboardCapturedAt", [formatVersionTime(version.createdAt)])}</Tag>
                         <Tag>{i18nMessage("dashboardMapCount", [String(version.mapCount || 0)])}</Tag>
+                        <Button
+                          size="small"
+                          type="text"
+                          danger
+                          icon={<DeleteOutlined />}
+                          title={i18nMessage("dashboardDeleteVersion")}
+                          aria-label={i18nMessage("dashboardDeleteVersion")}
+                          onClick={(event) => handleDeleteVersion(event, version.id)}
+                        />
                       </Flex>
                     </Flex>
                   ),
-                  children: <VersionPanel version={version} onReload={loadData} />,
+                  children: <VersionPanel version={version} />,
                 }))}
               />
             ),
@@ -505,11 +566,10 @@ export default function DashboardApp() {
         />
       ),
     }));
-  }, [groups, loadData]);
+  }, [groups, handleDeletePage, handleDeleteSite, handleDeleteVersion]);
 
   return (
-    <App>
-      <ConfigProvider theme={{ token: { fontSize: 13 } }}>
+    <ConfigProvider theme={{ token: { fontSize: 13 } }}>
         <style>{`
           .ant-collapse-header { overflow: hidden; }
           .ant-collapse-header-text { overflow: hidden; min-width: 0; flex: 1; }
@@ -604,7 +664,14 @@ export default function DashboardApp() {
           <SettingsSection settings={settings} onReload={loadData} />
         </Card>
       </Flex>
-    </ConfigProvider>
+      </ConfigProvider>
+  );
+}
+
+export default function DashboardApp() {
+  return (
+    <App>
+      <DashboardContent />
     </App>
   );
 }

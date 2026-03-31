@@ -213,4 +213,12 @@ describe("branch coverage helpers", () => {
       "app/node_modules/svelte/src/version.js",
     );
   });
+
+  it("sanitizePath removes intermediate parent segments", () => {
+    expect(sanitizePath("a/../b.js")).toBe("b.js");
+  });
+
+  it("sanitizePath keeps root-level names when parent appears first", () => {
+    expect(sanitizePath("../a.js")).toBe("a.js");
+  });
 });

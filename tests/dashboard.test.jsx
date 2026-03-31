@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { App as AntdApp } from "antd";
 import DashboardApp from "../src/dashboard/App.jsx";
+import hljs from "highlight.js/lib/core";
+import * as popupSourceMapHelpers from "../src/popup/sourcemap.mjs";
 
 const messageApi = {
   success: vi.fn(),
@@ -179,7 +181,7 @@ describe("DashboardApp", () => {
 
   it("renders cleanup button", () => {
     render(<DashboardApp />);
-    expect(screen.getByText("Clean up")).toBeInTheDocument();
+    expect(screen.getByText("Optimize Storage")).toBeInTheDocument();
   });
 
   it("shows summary card values from data", async () => {
@@ -223,10 +225,10 @@ describe("DashboardApp", () => {
     });
     render(<DashboardApp />);
     await screen.findByText((content) => content.includes(longSiteKey));
-    const cleanBtn = screen.getByText("Clean up").closest("button");
+    const cleanBtn = screen.getByText("Optimize Storage").closest("button");
     fireEvent.click(cleanBtn);
     await waitFor(() => {
-      expect(messageApi.info).toHaveBeenCalledWith("No invalid data found");
+      expect(messageApi.info).toHaveBeenCalledWith("No abnormal data found and no storage optimization was needed");
     });
   });
 
@@ -235,18 +237,81 @@ describe("DashboardApp", () => {
       if (msg.action === "getDashboardData") {
         cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true }, totalVersions: 0, totalStorageBytes: 0 });
       } else if (msg.action === "cleanupData") {
-        cb({ ok: true, cleaned: [{ id: "v1", pageUrl: "https://example.com", reason: "all_maps_missing", mapCount: 3 }] });
+        cb({
+          ok: true,
+          cleaned: [{ id: "v1", pageUrl: "https://example.com", reason: "all_maps_missing", mapCount: 3 }],
+          stats: { removedVersions: 1, removedMaps: 3, reclaimedBytes: 1024 },
+        });
       } else {
         cb(null);
       }
     });
     render(<DashboardApp />);
     await screen.findByText("No history yet.");
-    const cleanBtn = screen.getByText("Clean up").closest("button");
+    const cleanBtn = screen.getByText("Optimize Storage").closest("button");
     fireEvent.click(cleanBtn);
     await waitFor(() => {
       expect(messageApi.success).toHaveBeenCalledWith(
-        expect.objectContaining({ content: "Cleaned 1 invalid version(s)" }),
+        expect.objectContaining({ content: "Abnormal data cleaned: 1 versions · Storage optimized: 3 maps, 1.00 KB reclaimed" }),
+      );
+    });
+  });
+
+  it("handles cleanup failure", async () => {
+    chrome.runtime.sendMessage = vi.fn((msg, cb) => {
+      if (msg.action === "getDashboardData") {
+        cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true }, totalVersions: 0, totalStorageBytes: 0 });
+      } else if (msg.action === "cleanupData") {
+        cb({ ok: false, error: "cleanup exploded" });
+      } else {
+        cb(null);
+      }
+    });
+    render(<DashboardApp />);
+    await screen.findByText("No history yet.");
+    fireEvent.click(screen.getByText("Optimize Storage").closest("button"));
+    await waitFor(() => {
+      expect(messageApi.error).toHaveBeenCalledWith("cleanup exploded");
+    });
+  });
+
+  it("uses cleanup fallback error message when response has no error", async () => {
+    chrome.runtime.sendMessage = vi.fn((msg, cb) => {
+      if (msg.action === "getDashboardData") {
+        cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true }, totalVersions: 0, totalStorageBytes: 0 });
+      } else if (msg.action === "cleanupData") {
+        cb({ ok: false });
+      } else {
+        cb(null);
+      }
+    });
+    render(<DashboardApp />);
+    await screen.findByText("No history yet.");
+    fireEvent.click(screen.getByText("Optimize Storage").closest("button"));
+    await waitFor(() => {
+      expect(messageApi.error).toHaveBeenCalledWith("Cleanup failed");
+    });
+  });
+
+  it("uses cleaned item count when cleanup stats are missing", async () => {
+    chrome.runtime.sendMessage = vi.fn((msg, cb) => {
+      if (msg.action === "getDashboardData") {
+        cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true }, totalVersions: 0, totalStorageBytes: 0 });
+      } else if (msg.action === "cleanupData") {
+        cb({
+          ok: true,
+          cleaned: [{ id: "v1", pageUrl: "https://example.com", reason: "all_maps_missing", mapCount: 2 }],
+        });
+      } else {
+        cb(null);
+      }
+    });
+    render(<DashboardApp />);
+    await screen.findByText("No history yet.");
+    fireEvent.click(screen.getByText("Optimize Storage").closest("button"));
+    await waitFor(() => {
+      expect(messageApi.success).toHaveBeenCalledWith(
+        expect.objectContaining({ content: "Abnormal data cleaned: 1 versions · Storage optimized: 0 maps, 0 Bytes reclaimed" }),
       );
     });
   });
@@ -312,7 +377,7 @@ describe("DashboardApp", () => {
     // Should show action buttons
     expect(screen.getByText("Preview Sources")).toBeInTheDocument();
     expect(screen.getByText("Download version")).toBeInTheDocument();
-    expect(screen.getByText("Delete")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Delete" }).length).toBeGreaterThan(0);
   });
 
   it("shows empty version files when no files returned", async () => {
@@ -354,6 +419,27 @@ describe("DashboardApp", () => {
     });
   });
 
+  it("handles version download failure gracefully", async () => {
+    mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
+    vi.spyOn(popupSourceMapHelpers, "downloadGroup").mockRejectedValueOnce(new Error("zip-fail"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(<DashboardApp />);
+    await screen.findByText((content) => content.includes(longSiteKey));
+    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
+    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
+    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
+    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
+    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+
+    await waitFor(() => screen.getByText("Download version"));
+    fireEvent.click(screen.getByText("Download version").closest("button"));
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("[SourceD] version download failed:", expect.any(Error));
+    });
+  });
+
   it("handles version delete button click", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
@@ -366,13 +452,53 @@ describe("DashboardApp", () => {
     await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
     fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
 
-    await waitFor(() => screen.getByText("Delete"));
-    const deleteBtn = screen.getByText("Delete").closest("button");
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "Delete" }).length).toBeGreaterThan(0);
+    });
+    const versionHeaderNode = screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header");
+    const deleteBtn = within(versionHeaderNode).getByRole("button", { name: "Delete" });
     fireEvent.click(deleteBtn);
 
     await waitFor(() => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({ action: "deleteVersion", versionId: "v1" }),
+        expect.any(Function),
+      );
+    });
+  });
+
+  it("handles page delete button click from page header", async () => {
+    mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
+    render(<DashboardApp />);
+    await screen.findByText((content) => content.includes(longSiteKey));
+
+    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
+    await waitFor(() => screen.getByText((content) => content.includes("Example App With A Very Long Title")));
+
+    const pageHeaderNode = screen.getByText((content) => content.includes("Example App With A Very Long Title")).closest(".ant-collapse-header");
+    const deleteBtn = within(pageHeaderNode).getByRole("button", { name: "Delete" });
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "deletePageHistory", pageUrl: longUrl }),
+        expect.any(Function),
+      );
+    });
+  });
+
+  it("handles site delete button click from domain header", async () => {
+    mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
+    render(<DashboardApp />);
+    await screen.findByText((content) => content.includes(longSiteKey));
+
+    const domainHeaderNode = screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header");
+    const deleteBtn = within(domainHeaderNode).getByRole("button", { name: "Delete" });
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "deleteSiteHistory", siteKey: longSiteKey }),
         expect.any(Function),
       );
     });
@@ -402,6 +528,28 @@ describe("DashboardApp", () => {
     // Should show extracted source files in the tree
     await waitFor(() => {
       expect(screen.getByText((content) => content.includes("index.js"))).toBeInTheDocument();
+    });
+  });
+
+  it("closes preview drawer when close button is clicked", async () => {
+    mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
+    render(<DashboardApp />);
+    await screen.findByText((content) => content.includes(longSiteKey));
+
+    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
+    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
+    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
+    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
+    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+
+    await waitFor(() => screen.getByText("Preview Sources"));
+    fireEvent.click(screen.getByText("Preview Sources").closest("button"));
+    await waitFor(() => screen.getByText("Source Preview"));
+
+    fireEvent.click(document.querySelector(".ant-drawer-close"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Source Preview")).not.toBeInTheDocument();
     });
   });
 
@@ -445,6 +593,60 @@ describe("DashboardApp", () => {
       const codeEl = document.querySelector("pre code");
       expect(codeEl).toBeTruthy();
       expect(codeEl.textContent).toContain("console");
+    });
+  });
+
+  it("renders preview code for files with unknown extension", async () => {
+    const unknownMap = makeSourceMap(["README"], ["plain text content"]);
+    mockDashboardData({
+      pages: mockPages,
+      totalVersions: 1,
+      totalStorageBytes: 1024,
+      versionFiles: [{ url: "https://example.com/readme.js.map", content: unknownMap }],
+    });
+    render(<DashboardApp />);
+    await screen.findByText((content) => content.includes(longSiteKey));
+
+    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
+    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
+    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
+    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
+    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+
+    await waitFor(() => screen.getByText("Preview Sources"));
+    fireEvent.click(screen.getByText("Preview Sources").closest("button"));
+    await waitFor(() => screen.getByText("Source Preview"));
+    await waitFor(() => screen.getByText((content) => content.includes("README")));
+    fireEvent.click(screen.getByText((content) => content.includes("README")));
+
+    await waitFor(() => {
+      expect(document.querySelector("pre code").textContent).toContain("plain text content");
+    });
+  });
+
+  it("falls back to plain text preview when syntax highlight throws", async () => {
+    mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
+    vi.spyOn(hljs, "highlight").mockImplementation(() => {
+      throw new Error("highlight-fail");
+    });
+
+    render(<DashboardApp />);
+    await screen.findByText((content) => content.includes(longSiteKey));
+
+    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
+    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
+    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
+    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
+    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+
+    await waitFor(() => screen.getByText("Preview Sources"));
+    fireEvent.click(screen.getByText("Preview Sources").closest("button"));
+    await waitFor(() => screen.getByText("Source Preview"));
+    await waitFor(() => screen.getByText((content) => content.includes("index.js")));
+    fireEvent.click(screen.getByText((content) => content.includes("index.js")));
+
+    await waitFor(() => {
+      expect(document.querySelector("pre code").textContent).toContain("console.log");
     });
   });
 

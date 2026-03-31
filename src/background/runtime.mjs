@@ -11,6 +11,7 @@ import {
   compactStorageData,
   currentSettings,
   deletePageHistoryAndSessions,
+  deleteSiteHistoryAndSessions,
   deleteVersions,
   distributionSummary,
   ensureStorageReady,
@@ -48,7 +49,7 @@ export function registerRuntimeListeners() {
       refreshBadgeForTab(tabId, changeInfo.url);
     } else if (changeInfo.title && state.tabSessions[tabId]) {
       state.tabSessions[tabId].title = changeInfo.title;
-    } else if (changeInfo.status === "complete" && state.tabSessions[tabId]) {
+    } else if (changeInfo.status === "complete" && state.tabSessions[tabId] && currentSettings().detectionEnabled) {
       scheduleSessionPersist(state.tabSessions[tabId]);
       refreshBadgeForTab(tabId, tab && tab.url);
     }
@@ -69,6 +70,7 @@ export function registerRuntimeListeners() {
       if (!/\.js(\?.*)?$/.test(details.url)) return;
       if (/^chrome-extension:\/\//.test(details.url)) return;
       if (details.tabId == null || details.tabId < 0) return;
+      if (!currentSettings().detectionEnabled) return;
 
       chrome.tabs.get(details.tabId, (tab) => {
         if (chrome.runtime.lastError || !tab || !tab.url) return;
@@ -132,6 +134,7 @@ export function registerRuntimeListeners() {
           files: [],
           totalStorageBytes: totalStorageBytes(),
           totalVersions: Object.keys(state.versionIndex).length,
+          settings: currentSettings(),
         });
         return;
       }
@@ -152,6 +155,7 @@ export function registerRuntimeListeners() {
           files,
           totalStorageBytes: totalStorageBytes(),
           totalVersions: Object.keys(state.versionIndex).length,
+          settings: currentSettings(),
         });
       }).catch((err) => {
         sendResponse({
@@ -218,15 +222,38 @@ export function registerRuntimeListeners() {
       return true;
     }
 
+    if (message.action === "deleteSiteHistory") {
+      deleteSiteHistoryAndSessions(message.siteKey || "").then(() => {
+        broadcastSummary();
+        sendResponse({ ok: true });
+      });
+      return true;
+    }
+
     if (message.action === "cleanupData") {
       if (Object.keys(state.versionIndex).length === 0) {
-        sendResponse({ ok: true, cleaned: [] });
+        sendResponse({
+          ok: true,
+          cleaned: [],
+          stats: {
+            removedVersions: 0,
+            removedMaps: 0,
+            reclaimedBytes: 0,
+            remainingVersions: 0,
+            remainingMaps: 0,
+            remainingBytes: 0,
+          },
+        });
         return;
       }
 
       compactStorageData().then((storageState) => {
         broadcastSummary();
-        sendResponse({ ok: true, cleaned: storageState.invalidVersions });
+        sendResponse({
+          ok: true,
+          cleaned: storageState.invalidVersions,
+          stats: storageState.stats,
+        });
       }).catch((err) => {
         console.error("[SourceD] cleanup failed:", err);
         sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });

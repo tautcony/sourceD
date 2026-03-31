@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Button, Space, Typography, Tree, Empty, Spin, Flex, ConfigProvider, theme } from "antd";
+import { Button, Space, Typography, Tree, Empty, Spin, Flex, ConfigProvider, Switch, theme } from "antd";
 import { DownloadOutlined, HistoryOutlined, DeleteOutlined, FolderOutlined, FileOutlined } from "@ant-design/icons";
 import { i18nMessage, fileSizeIEC, parseFileName, sourceMapTreePath, sanitizeFilename } from "../shared/utils.mjs";
 import { parseSourceMap, downloadGroup } from "./sourcemap.mjs";
@@ -63,6 +63,8 @@ export default function PopupApp() {
   const [files, setFiles] = useState([]);
   const [totalStorageBytes, setTotalStorageBytes] = useState(0);
   const [totalVersions, setTotalVersions] = useState(0);
+  const [detectionEnabled, setDetectionEnabled] = useState(true);
+  const [togglingDetection, setTogglingDetection] = useState(false);
 
   const loadState = useCallback(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -80,6 +82,7 @@ export default function PopupApp() {
         setFiles(data.files || []);
         setTotalStorageBytes(data.totalStorageBytes || 0);
         setTotalVersions(data.totalVersions || 0);
+        setDetectionEnabled(data.settings?.detectionEnabled !== false);
       });
     });
   }, []);
@@ -118,6 +121,19 @@ export default function PopupApp() {
     chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
   }, []);
 
+  const handleToggleDetection = useCallback((checked) => {
+    setTogglingDetection(true);
+    chrome.runtime.sendMessage({
+      action: "updateSettings",
+      settings: { detectionEnabled: checked },
+    }, (resp) => {
+      setTogglingDetection(false);
+      if (resp?.ok) {
+        setDetectionEnabled(resp.settings?.detectionEnabled !== false);
+      }
+    });
+  }, []);
+
   const treeData = useMemo(() => {
     if (!files.length) return [];
     return toAntdTreeData(buildMapTree(files));
@@ -149,32 +165,55 @@ export default function PopupApp() {
       `}</style>
       <Flex vertical style={{ minHeight: 300, maxHeight: 620, overflow: "hidden", minWidth: 560, maxWidth: 840 }}>
         {/* Header */}
-        <Flex vertical gap={4} style={{ padding: "14px 18px 12px", borderBottom: "1px solid #dde4ec", background: "#fafbfc" }}>
-          <Flex justify="space-between" align="center">
-            <Text strong style={{ fontSize: 17, letterSpacing: "-0.02em" }}>
+        <Flex
+          justify="space-between"
+          align="flex-start"
+          gap={16}
+          style={{ padding: "14px 14px 12px", borderBottom: "1px solid #dde4ec", background: "#fafbfc" }}
+        >
+          <Flex vertical gap={4} style={{ minWidth: 0, flex: 1 }}>
+            <Text strong style={{ fontSize: 18, letterSpacing: "-0.025em", lineHeight: 1.1 }}>
               {i18nMessage("popupHeaderTitle")}
             </Text>
-            <Space size="small">
-              <Button size="small" icon={<HistoryOutlined />} onClick={handleOpenHistory}>
+            <Text type="secondary" style={{ fontSize: 13, lineHeight: 1.35 }}>
+              {statsText}
+            </Text>
+          </Flex>
+          <Flex vertical gap={10} style={{ flexShrink: 0, minWidth: 0, alignItems: "flex-end" }}>
+            <Flex
+              align="center"
+              gap={10}
+              style={{
+                padding: "8px 10px",
+                background: "#fff",
+                border: "1px solid #dde4ec",
+              }}
+            >
+              <Text type="secondary" style={{ fontSize: 13, lineHeight: 1 }}>
+                {i18nMessage("popupDetectionToggle")}
+              </Text>
+              <Switch checked={detectionEnabled} loading={togglingDetection} onChange={handleToggleDetection} />
+            </Flex>
+            <Space size="middle">
+              <Button size="middle" icon={<HistoryOutlined />} onClick={handleOpenHistory} style={{ minWidth: 96, height: 34 }}>
                 {i18nMessage("popupOpenHistory")}
               </Button>
-              <Button size="small" icon={<DeleteOutlined />} onClick={handleClearCurrentPage} disabled={!latestVersion}>
+              <Button size="middle" icon={<DeleteOutlined />} onClick={handleClearCurrentPage} disabled={!latestVersion} style={{ minWidth: 132, height: 34 }}>
                 {i18nMessage("popupClearButton")}
               </Button>
             </Space>
           </Flex>
-          <Text type="secondary" style={{ fontSize: 12 }}>{statsText}</Text>
         </Flex>
 
         {/* Body */}
-        <Flex vertical flex={1} style={{ overflow: "auto", padding: "0 18px 14px" }}>
+        <Flex vertical flex={1} style={{ overflow: "auto", padding: "0 14px 10px" }}>
           {loading ? (
-            <Flex justify="center" align="center" flex={1} style={{ padding: 40 }}>
+            <Flex justify="center" align="center" flex={1} style={{ padding: 28 }}>
               <Spin description={i18nMessage("popupLoading")} />
             </Flex>
           ) : !latestVersion ? (
             <Empty
-              style={{ margin: "auto", padding: 40 }}
+              style={{ padding: "20px 0" }}
               description={
                 <Flex vertical gap={4}>
                   <Text>{i18nMessage("popupEmptyTitle")}</Text>
@@ -183,7 +222,7 @@ export default function PopupApp() {
               }
             />
           ) : (
-            <Flex vertical gap={8} style={{ paddingTop: 12 }}>
+            <Flex vertical gap={8} style={{ paddingTop: 10 }}>
               <Flex justify="space-between" align="center">
                 <Flex vertical gap={2} style={{ minWidth: 0, flex: 1 }}>
                   <AntLink href={pageUrl} target="_blank" rel="noopener noreferrer" ellipsis style={{ fontSize: 12 }}>

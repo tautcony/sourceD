@@ -26,6 +26,7 @@ This repository is currently structured as a lightweight unpacked extension for 
 
 - `npm run build:vendor`: refresh vendor runtime files under `vendor/`
 - `npm run build`: create a clean unpacked release under `dist/`
+- `npm run build:debug`: create an unpacked debug build with linked `.map` files and non-minified bundles
 - `npm run package`: build `dist/` and create a zip under `releases/`
 - `npm run clean`: remove generated `dist/` and `releases/`
 
@@ -64,6 +65,7 @@ Project layout:
 
 - `manifest.json`: extension manifest
 - `src/background/index.js`: source map discovery, persistence, badge state, and extension messaging
+- `src/background/*.mjs`: background shared state, storage, sessions, and runtime listeners
 - `src/popup/App.jsx`: popup UI
 - `src/popup/entry.jsx`: popup bundle entry
 - `src/popup/sourcemap.mjs`: source map extraction and download helpers
@@ -75,7 +77,7 @@ Project layout:
 - `scripts/build-vendor.mjs`: vendor build step
 - `scripts/build-dist.mjs`: assemble release files into `dist/`
 - `scripts/package-release.mjs`: zip `dist/` into `releases/`
-- `bundles/`: esbuild output for popup/dashboard/options
+- `bundles/`: esbuild output for background/popup/dashboard/options
 - `_locales/en/messages.json`: extension name and description
 
 ## Third-Party Dependencies

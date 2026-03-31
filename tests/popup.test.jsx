@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import PopupApp from "../src/popup/App.jsx";
+import * as sourceMapHelpers from "../src/popup/sourcemap.mjs";
 
 // Mock FileReader for download tests
 class MockFileReader {
@@ -30,7 +31,10 @@ function mockPopupState(data) {
         files: data.files || [],
         totalStorageBytes: data.totalStorageBytes || 0,
         totalVersions: data.totalVersions || 0,
+        settings: data.settings || { detectionEnabled: true },
       });
+    } else if (msg.action === "updateSettings") {
+      cb({ ok: true, settings: Object.assign({ detectionEnabled: true }, msg.settings || {}) });
     } else if (msg.action === "deletePageHistory") {
       if (cb) cb({ ok: true });
     } else {
@@ -42,6 +46,7 @@ function mockPopupState(data) {
 beforeEach(() => {
   globalThis.FileReader = MockFileReader;
   chrome.downloads.download = vi.fn((opts, cb) => { if (cb) cb(1); });
+  vi.restoreAllMocks();
 });
 
 describe("PopupApp", () => {
@@ -58,6 +63,11 @@ describe("PopupApp", () => {
   it("renders history button", () => {
     render(<PopupApp />);
     expect(screen.getByText("History")).toBeInTheDocument();
+  });
+
+  it("renders detection toggle", () => {
+    render(<PopupApp />);
+    expect(screen.getByText("Detect")).toBeInTheDocument();
   });
 
   it("renders clear button (disabled when no version)", () => {
@@ -140,6 +150,63 @@ describe("PopupApp", () => {
     });
   });
 
+  it("toggling detection updates settings", async () => {
+    mockPopupState({
+      settings: { detectionEnabled: true },
+    });
+    render(<PopupApp />);
+    const toggle = await screen.findByRole("switch");
+    fireEvent.click(toggle);
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "updateSettings",
+          settings: { detectionEnabled: false },
+        }),
+        expect.any(Function),
+      );
+    });
+  });
+
+  it("keeps detection state unchanged when settings update fails", async () => {
+    chrome.tabs.query = vi.fn((_, cb) => cb([{ id: 1, url: "https://example.com/app" }]));
+    chrome.runtime.sendMessage = vi.fn((msg, cb) => {
+      if (msg.action === "getPopupState") {
+        cb({
+          ok: true,
+          pageUrl: "https://example.com/app",
+          latestVersion: null,
+          files: [],
+          totalStorageBytes: 0,
+          totalVersions: 0,
+          settings: { detectionEnabled: true },
+        });
+      } else if (msg.action === "updateSettings") {
+        cb({ ok: false });
+      } else if (cb) {
+        cb(null);
+      }
+    });
+
+    render(<PopupApp />);
+    const toggle = await screen.findByRole("switch");
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "updateSettings",
+          settings: { detectionEnabled: false },
+        }),
+        expect.any(Function),
+      );
+    });
+
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+  });
+
   it("clicking Download all triggers downloadGroup", async () => {
     const sourceMap = makeSourceMap(["src/app.js"], ['const app = "hello";']);
     mockPopupState({
@@ -152,6 +219,24 @@ describe("PopupApp", () => {
     fireEvent.click(downloadBtn);
     await waitFor(() => {
       expect(chrome.downloads.download).toHaveBeenCalled();
+    });
+  });
+
+  it("handles Download all failure gracefully", async () => {
+    const sourceMap = makeSourceMap(["src/app.js"], ['const app = "hello";']);
+    mockPopupState({
+      latestVersion: { id: "v1", label: "v1", createdAt: "2026-01-01T00:00:00Z", mapCount: 1, byteSize: 500 },
+      files: [{ url: "https://example.com/app.js.map", content: sourceMap }],
+    });
+    vi.spyOn(sourceMapHelpers, "downloadGroup").mockRejectedValueOnce(new Error("boom"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(<PopupApp />);
+    await screen.findByText("Download all");
+    fireEvent.click(screen.getByText("Download all").closest("button"));
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("[SourceD] batch download error:", expect.any(Error));
     });
   });
 
@@ -179,6 +264,31 @@ describe("PopupApp", () => {
         expect(chrome.downloads.download).toHaveBeenCalled();
       });
     }
+  });
+
+  it("handles single file download failure gracefully", async () => {
+    const sourceMap = makeSourceMap(["src/index.js"], ['console.log("hi");']);
+    mockPopupState({
+      latestVersion: { id: "v1", label: "v1", createdAt: "2026-01-01T00:00:00Z", mapCount: 1, byteSize: 500 },
+      files: [{ url: "https://example.com/bundle.js.map", content: sourceMap }],
+    });
+    vi.spyOn(sourceMapHelpers, "parseSourceMap").mockRejectedValueOnce(new Error("single-fail"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(<PopupApp />);
+    await screen.findByText("Download all");
+    const leafNodes = document.querySelectorAll(".ant-tree-treenode");
+    for (const node of leafNodes) {
+      const title = node.querySelector(".ant-tree-title");
+      if (title && title.textContent.includes("bundle.js.map")) {
+        fireEvent.click(title);
+        break;
+      }
+    }
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("[SourceD] download error:", expect.any(Error));
+    });
   });
 
   it("clicking a folder node does nothing (early return)", async () => {
