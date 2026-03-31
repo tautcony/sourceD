@@ -32,10 +32,12 @@ export function setBadgeText(num, tabId) {
   try {
     const maybePromise = chrome.action.setBadgeText(payload);
     if (maybePromise && typeof maybePromise.catch === "function") {
+      /* v8 ignore next -- browser badge updates can race with tab teardown */
       maybePromise.catch(() => {
         // Ignore races where the tab no longer exists by the time badge state updates.
       });
     }
+  /* v8 ignore next -- browser badge updates can throw during tab teardown */
   } catch {
     // Ignore races where the tab no longer exists by the time badge state updates.
   }

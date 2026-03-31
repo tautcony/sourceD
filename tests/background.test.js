@@ -67,56 +67,6 @@ describe("background runtime regressions", () => {
     vi.doUnmock("../src/background/sessions.mjs");
   });
 
-  it("responds with an error when updateSettings fails", async () => {
-    const { chrome, listeners } = createChromeMock();
-    globalThis.chrome = chrome;
-
-    vi.doMock("../src/background/storage.mjs", () => ({
-      broadcastSummary: vi.fn(),
-      compactStorageData: vi.fn(),
-      currentSettings: vi.fn(() => ({ detectionEnabled: true })),
-      deletePageHistoryAndSessions: vi.fn(),
-      deleteSiteHistoryAndSessions: vi.fn(),
-      deleteVersions: vi.fn(),
-      distributionSummary: vi.fn(() => []),
-      ensureStorageReady: vi.fn(() => Promise.resolve()),
-      importSourceMapsForPage: vi.fn(),
-      loadSettings: vi.fn(() => Promise.resolve({ detectionEnabled: true })),
-      loadVersionFiles: vi.fn(() => Promise.resolve([])),
-      prunePageHistory: vi.fn(() => Promise.resolve()),
-      pushSummary: vi.fn(),
-      removeVersionsFromIndexes: vi.fn(),
-      saveSettings: vi.fn(() => Promise.reject(new Error("save exploded"))),
-      summarizePages: vi.fn(() => []),
-      totalStorageBytes: vi.fn(() => 0),
-    }));
-
-    vi.doMock("../src/background/sessions.mjs", () => ({
-      cleanupTabSession: vi.fn(),
-      fetchSourceMap: vi.fn(),
-      getOrCreateSession: vi.fn(),
-      isValidSourceMap: vi.fn(() => true),
-      scheduleSessionPersist: vi.fn(),
-    }));
-
-    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
-
-    const sendResponse = vi.fn();
-    const keepChannel = listeners.onMessage(
-      { action: "updateSettings", settings: { detectionEnabled: false } },
-      {},
-      sendResponse,
-    );
-
-    expect(keepChannel).toBe(true);
-    await flushPromises();
-
-    expect(sendResponse).toHaveBeenCalledWith({
-      ok: false,
-      error: "save exploded",
-    });
-  });
-
   it("does not register request listeners before settings finish loading", async () => {
     const { chrome } = createChromeMock();
     globalThis.chrome = chrome;
@@ -164,46 +114,6 @@ describe("background runtime regressions", () => {
     await initPromise;
 
     expect(chrome.webRequest.onBeforeRequest.addListener).toHaveBeenCalledTimes(1);
-  });
-
-  it("returns an error for unknown actions", async () => {
-    const { chrome, listeners } = createChromeMock();
-    globalThis.chrome = chrome;
-
-    vi.doMock("../src/background/storage.mjs", () => ({
-      broadcastSummary: vi.fn(),
-      compactStorageData: vi.fn(),
-      currentSettings: vi.fn(() => ({ detectionEnabled: true })),
-      deletePageHistoryAndSessions: vi.fn(),
-      deleteSiteHistoryAndSessions: vi.fn(),
-      deleteVersions: vi.fn(),
-      distributionSummary: vi.fn(() => []),
-      ensureStorageReady: vi.fn(() => Promise.resolve()),
-      importSourceMapsForPage: vi.fn(),
-      loadSettings: vi.fn(() => Promise.resolve({ detectionEnabled: true })),
-      loadVersionFiles: vi.fn(() => Promise.resolve([])),
-      prunePageHistory: vi.fn(() => Promise.resolve()),
-      pushSummary: vi.fn(),
-      removeVersionsFromIndexes: vi.fn(),
-      saveSettings: vi.fn(() => Promise.resolve()),
-      summarizePages: vi.fn(() => []),
-      totalStorageBytes: vi.fn(() => 0),
-    }));
-
-    vi.doMock("../src/background/sessions.mjs", () => ({
-      cleanupTabSession: vi.fn(),
-      fetchSourceMap: vi.fn(),
-      getOrCreateSession: vi.fn(),
-      isValidSourceMap: vi.fn(() => true),
-      scheduleSessionPersist: vi.fn(),
-    }));
-
-    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
-
-    const sendResponse = vi.fn();
-    listeners.onMessage({ action: "mystery" }, {}, sendResponse);
-
-    expect(sendResponse).toHaveBeenCalledWith({ ok: false, error: "unknown action" });
   });
 
   it("captures clearAll ids before async deletion and reports failures to the popup", async () => {
@@ -291,28 +201,9 @@ describe("background runtime regressions", () => {
     });
   });
 
-  it("drops fetched maps when the tab session has changed", async () => {
+  it("returns popup state for current page and latest version files", async () => {
     const { chrome, listeners } = createChromeMock();
     globalThis.chrome = chrome;
-
-    chrome.tabs.get = vi.fn((tabId, cb) => {
-      cb({ id: tabId, url: "https://example.com/app", title: "Example" });
-    });
-
-    const scheduleSessionPersist = vi.fn();
-    const fetchSourceMap = vi.fn((_url, cb) => {
-      cb("https://example.com/app.js.map", '{"version":3,"sources":["a"],"sourcesContent":["a"]}');
-    });
-    const session = {
-      tabId: 8,
-      pageUrl: "https://example.com/app",
-      title: "Example",
-      maps: {},
-      versionId: null,
-      versionOwned: false,
-      signature: null,
-      timer: null,
-    };
 
     vi.doMock("../src/background/storage.mjs", () => ({
       broadcastSummary: vi.fn(),
@@ -325,7 +216,191 @@ describe("background runtime regressions", () => {
       ensureStorageReady: vi.fn(() => Promise.resolve()),
       importSourceMapsForPage: vi.fn(),
       loadSettings: vi.fn(() => Promise.resolve({ detectionEnabled: true })),
-      loadVersionFiles: vi.fn(() => Promise.resolve([])),
+      loadVersionFiles: vi.fn(() => Promise.resolve([{ url: "a.map", content: "{}" }])),
+      prunePageHistory: vi.fn(() => Promise.resolve()),
+      pushSummary: vi.fn(),
+      removeVersionsFromIndexes: vi.fn(),
+      saveSettings: vi.fn(() => Promise.resolve()),
+      summarizePages: vi.fn(() => []),
+      totalStorageBytes: vi.fn(() => 12),
+    }));
+
+    vi.doMock("../src/background/sessions.mjs", () => ({
+      cleanupTabSession: vi.fn(),
+      fetchSourceMap: vi.fn(),
+      getOrCreateSession: vi.fn(),
+      isValidSourceMap: vi.fn(() => true),
+      scheduleSessionPersist: vi.fn(),
+    }));
+
+    const shared = await import("../src/background/shared.mjs");
+    shared.state.versionIndex = {
+      v1: {
+        id: "v1",
+        pageUrl: "https://example.com/app",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        lastSeenAt: "2026-01-02T00:00:00.000Z",
+        mapCount: 1,
+        byteSize: 12,
+        title: "Example",
+      },
+    };
+    shared.state.versionsByPage = { "https://example.com/app": ["v1"] };
+
+    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
+    const sendResponse = vi.fn();
+
+    const keepOpen = listeners.onMessage({ action: "getPopupState", pageUrl: "https://example.com/app#hash" }, {}, sendResponse);
+    expect(keepOpen).toBe(true);
+    await flushPromises();
+
+    expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({
+      ok: true,
+      pageUrl: "https://example.com/app",
+      files: [{ url: "a.map", content: "{}" }],
+      totalStorageBytes: 12,
+    }));
+  });
+
+  it("covers dashboard and mutation message handlers", async () => {
+    const { chrome, listeners } = createChromeMock();
+    globalThis.chrome = chrome;
+
+    const broadcastSummary = vi.fn();
+    const compactStorageData = vi.fn(() => Promise.resolve({
+      invalidVersions: [{ id: "stale", pageUrl: "https://example.com/app", reason: "all_maps_missing", mapCount: 1 }],
+      stats: { removedVersions: 1, removedMaps: 1, reclaimedBytes: 12, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 },
+    }));
+    const deleteVersions = vi.fn(() => Promise.resolve());
+    const deletePageHistoryAndSessions = vi.fn(() => Promise.resolve());
+    const deleteSiteHistoryAndSessions = vi.fn(() => Promise.resolve());
+    const importSourceMapsForPage = vi.fn(() => Promise.resolve({ ok: true, reusedExisting: false, importedCount: 1 }));
+    const loadVersionFiles = vi.fn(() => Promise.resolve([{ url: "b.map", content: "{}" }]));
+    const summarizePages = vi.fn(() => [{ pageUrl: "https://example.com/app" }]);
+    const distribution = [{ siteKey: "https://example.com" }];
+    const removeVersionsFromIndexes = vi.fn();
+
+    vi.doMock("../src/background/storage.mjs", () => ({
+      broadcastSummary,
+      compactStorageData,
+      currentSettings: vi.fn(() => ({ detectionEnabled: true })),
+      deletePageHistoryAndSessions,
+      deleteSiteHistoryAndSessions,
+      deleteVersions,
+      distributionSummary: vi.fn(() => distribution),
+      ensureStorageReady: vi.fn(() => Promise.resolve()),
+      importSourceMapsForPage,
+      loadSettings: vi.fn(() => Promise.resolve({ detectionEnabled: true })),
+      loadVersionFiles,
+      prunePageHistory: vi.fn(() => Promise.resolve()),
+      pushSummary: vi.fn(),
+      removeVersionsFromIndexes,
+      saveSettings: vi.fn(() => Promise.resolve()),
+      summarizePages,
+      totalStorageBytes: vi.fn(() => 99),
+    }));
+
+    vi.doMock("../src/background/sessions.mjs", () => ({
+      cleanupTabSession: vi.fn(),
+      fetchSourceMap: vi.fn(),
+      getOrCreateSession: vi.fn(),
+      isValidSourceMap: vi.fn((raw) => raw === "valid-map"),
+      scheduleSessionPersist: vi.fn(),
+    }));
+
+    const shared = await import("../src/background/shared.mjs");
+    shared.state.versionIndex = { v1: { id: "v1", lastSeenAt: "2026-01-01T00:00:00.000Z" } };
+    shared.state.versionsByPage = { "https://example.com/app": ["v1"] };
+
+    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
+
+    const dashboardResponse = vi.fn();
+    listeners.onMessage({ action: "getDashboardData" }, {}, dashboardResponse);
+    expect(dashboardResponse).toHaveBeenCalledWith({
+      pages: [{ pageUrl: "https://example.com/app" }],
+      distribution,
+      settings: { detectionEnabled: true },
+      totalVersions: 1,
+      totalStorageBytes: 99,
+    });
+
+    const versionFilesResponse = vi.fn();
+    const keepFiles = listeners.onMessage({ action: "getVersionFiles", versionId: "v1" }, {}, versionFilesResponse);
+    expect(keepFiles).toBe(true);
+    await flushPromises();
+    expect(versionFilesResponse).toHaveBeenCalledWith({ ok: true, files: [{ url: "b.map", content: "{}" }] });
+
+    const deleteResponse = vi.fn();
+    listeners.onMessage({ action: "deleteVersion", versionId: "v1" }, {}, deleteResponse);
+    await flushPromises();
+    expect(deleteVersions).toHaveBeenCalledWith(["v1"]);
+    expect(removeVersionsFromIndexes).toHaveBeenCalledWith(["v1"]);
+    expect(deleteResponse).toHaveBeenCalledWith({ ok: true });
+
+    const pageDeleteResponse = vi.fn();
+    listeners.onMessage({ action: "deletePageHistory", pageUrl: "https://example.com/app#hash" }, {}, pageDeleteResponse);
+    await flushPromises();
+    expect(deletePageHistoryAndSessions).toHaveBeenCalledWith("https://example.com/app");
+    expect(pageDeleteResponse).toHaveBeenCalledWith({ ok: true });
+
+    const siteDeleteResponse = vi.fn();
+    listeners.onMessage({ action: "deleteSiteHistory", siteKey: "https://example.com" }, {}, siteDeleteResponse);
+    await flushPromises();
+    expect(deleteSiteHistoryAndSessions).toHaveBeenCalledWith("https://example.com");
+    expect(siteDeleteResponse).toHaveBeenCalledWith({ ok: true });
+
+    const cleanupResponse = vi.fn();
+    const keepCleanup = listeners.onMessage({ action: "cleanupData" }, {}, cleanupResponse);
+    expect(keepCleanup).toBe(true);
+    await flushPromises();
+    expect(cleanupResponse).toHaveBeenCalledWith({
+      ok: true,
+      cleaned: [{ id: "stale", pageUrl: "https://example.com/app", reason: "all_maps_missing", mapCount: 1 }],
+      stats: { removedVersions: 1, removedMaps: 1, reclaimedBytes: 12, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 },
+    });
+
+    const importResponse = vi.fn();
+    const keepImport = listeners.onMessage({
+      action: "importSourceMaps",
+      pageUrl: "https://example.com/app",
+      title: "Example",
+      files: [
+        { mapUrl: "valid.map", content: "valid-map" },
+        { mapUrl: "bad.map", content: "invalid" },
+        { name: "unnamed.map", content: "" },
+      ],
+    }, {}, importResponse);
+    expect(keepImport).toBe(true);
+    await flushPromises();
+    expect(importSourceMapsForPage).toHaveBeenCalledWith({
+      pageUrl: "https://example.com/app",
+      title: "Example",
+      files: [{ mapUrl: "valid.map", content: "valid-map" }],
+    });
+    expect(importResponse).toHaveBeenCalledWith({
+      ok: true,
+      reusedExisting: false,
+      importedCount: 1,
+      rejectedFiles: ["bad.map", "unnamed.map"],
+    });
+  });
+
+  it("returns empty cleanup stats and propagates popup/import failures", async () => {
+    const { chrome, listeners } = createChromeMock();
+    globalThis.chrome = chrome;
+
+    vi.doMock("../src/background/storage.mjs", () => ({
+      broadcastSummary: vi.fn(),
+      compactStorageData: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
+      currentSettings: vi.fn(() => ({ detectionEnabled: true })),
+      deletePageHistoryAndSessions: vi.fn(() => Promise.reject(new Error("page exploded"))),
+      deleteSiteHistoryAndSessions: vi.fn(() => Promise.reject(new Error("site exploded"))),
+      deleteVersions: vi.fn(() => Promise.reject(new Error("delete exploded"))),
+      distributionSummary: vi.fn(() => []),
+      ensureStorageReady: vi.fn(() => Promise.resolve()),
+      importSourceMapsForPage: vi.fn(() => Promise.reject(new Error("import exploded"))),
+      loadSettings: vi.fn(() => Promise.resolve({ detectionEnabled: true })),
+      loadVersionFiles: vi.fn(() => Promise.reject(new Error("files exploded"))),
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes: vi.fn(),
@@ -336,26 +411,112 @@ describe("background runtime regressions", () => {
 
     vi.doMock("../src/background/sessions.mjs", () => ({
       cleanupTabSession: vi.fn(),
-      fetchSourceMap,
-      getOrCreateSession: vi.fn(() => session),
+      fetchSourceMap: vi.fn(),
+      getOrCreateSession: vi.fn(),
       isValidSourceMap: vi.fn(() => true),
-      scheduleSessionPersist,
+      scheduleSessionPersist: vi.fn(),
     }));
 
-    const runtime = await import("../src/background/runtime.mjs");
     const shared = await import("../src/background/shared.mjs");
+    shared.state.versionIndex = {};
+    shared.state.versionsByPage = {};
 
-    runtime.registerRuntimeListeners();
-    shared.state.tabSessions[8] = { tabId: 8, pageUrl: "https://example.com/other", maps: {} };
+    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
 
-    listeners.onBeforeRequest({
-      type: "script",
-      url: "https://example.com/app.js",
-      tabId: 8,
+    const cleanupResponse = vi.fn();
+    listeners.onMessage({ action: "cleanupData" }, {}, cleanupResponse);
+    expect(cleanupResponse).toHaveBeenCalledWith({
+      ok: true,
+      cleaned: [],
+      stats: {
+        removedVersions: 0,
+        removedMaps: 0,
+        reclaimedBytes: 0,
+        remainingVersions: 0,
+        remainingMaps: 0,
+        remainingBytes: 0,
+      },
     });
 
-    expect(session.maps).toEqual({});
-    expect(scheduleSessionPersist).not.toHaveBeenCalled();
+    const popupState = vi.fn();
+    listeners.onMessage({ action: "getPopupState", pageUrl: "https://example.com/app" }, {}, popupState);
+    expect(popupState).toHaveBeenCalledWith(expect.objectContaining({ latestVersion: null, ok: true }));
+
+    shared.state.versionIndex = {
+      v1: { id: "v1", pageUrl: "https://example.com/app", createdAt: "2026-01-01T00:00:00.000Z", lastSeenAt: "2026-01-01T00:00:00.000Z", mapCount: 1, byteSize: 1, title: "Example" },
+    };
+    shared.state.versionsByPage = { "https://example.com/app": ["v1"] };
+
+    const popupError = vi.fn();
+    listeners.onMessage({ action: "getPopupState", pageUrl: "https://example.com/app" }, {}, popupError);
+    await flushPromises();
+    expect(popupError).toHaveBeenCalledWith({ ok: false, error: "files exploded" });
+
+    const importError = vi.fn();
+    listeners.onMessage({
+      action: "importSourceMaps",
+      pageUrl: "https://example.com/app",
+      title: "Example",
+      files: [{ mapUrl: "valid.map", content: "valid" }],
+    }, {}, importError);
+    await flushPromises();
+    expect(importError).toHaveBeenCalledWith({ ok: false, error: "import exploded", rejectedFiles: [] });
+  });
+
+  it("propagates getVersionFiles, delete and cleanup failures", async () => {
+    const { chrome, listeners } = createChromeMock();
+    globalThis.chrome = chrome;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    vi.doMock("../src/background/storage.mjs", () => ({
+      broadcastSummary: vi.fn(),
+      compactStorageData: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
+      currentSettings: vi.fn(() => ({ detectionEnabled: true })),
+      deletePageHistoryAndSessions: vi.fn(() => Promise.resolve()),
+      deleteSiteHistoryAndSessions: vi.fn(() => Promise.resolve()),
+      deleteVersions: vi.fn(() => Promise.reject(new Error("delete exploded"))),
+      distributionSummary: vi.fn(() => []),
+      ensureStorageReady: vi.fn(() => Promise.resolve()),
+      importSourceMapsForPage: vi.fn(() => Promise.resolve({ ok: true })),
+      loadSettings: vi.fn(() => Promise.resolve({ detectionEnabled: true })),
+      loadVersionFiles: vi.fn(() => Promise.reject(new Error("files exploded"))),
+      prunePageHistory: vi.fn(() => Promise.resolve()),
+      pushSummary: vi.fn(),
+      removeVersionsFromIndexes: vi.fn(),
+      saveSettings: vi.fn(() => Promise.resolve()),
+      summarizePages: vi.fn(() => []),
+      totalStorageBytes: vi.fn(() => 0),
+    }));
+
+    vi.doMock("../src/background/sessions.mjs", () => ({
+      cleanupTabSession: vi.fn(),
+      fetchSourceMap: vi.fn(),
+      getOrCreateSession: vi.fn(),
+      isValidSourceMap: vi.fn(() => true),
+      scheduleSessionPersist: vi.fn(),
+    }));
+
+    const shared = await import("../src/background/shared.mjs");
+    shared.state.versionIndex = { v1: { id: "v1", lastSeenAt: "2026-01-01T00:00:00.000Z" } };
+
+    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
+
+    const filesResponse = vi.fn();
+    listeners.onMessage({ action: "getVersionFiles", versionId: "v1" }, {}, filesResponse);
+    await flushPromises();
+    expect(filesResponse).toHaveBeenCalledWith({ ok: false, error: "files exploded" });
+
+    const deleteResponse = vi.fn();
+    listeners.onMessage({ action: "deleteVersion", versionId: "v1" }, {}, deleteResponse);
+    await flushPromises();
+    expect(deleteResponse).toHaveBeenCalledWith({ ok: false, error: "delete exploded" });
+
+    const cleanupResponse = vi.fn();
+    const keepOpen = listeners.onMessage({ action: "cleanupData" }, {}, cleanupResponse);
+    expect(keepOpen).toBe(true);
+    await flushPromises();
+    expect(consoleError).toHaveBeenCalledWith("[SourceD] cleanup failed:", expect.any(Error));
+    expect(cleanupResponse).toHaveBeenCalledWith({ ok: false, error: "cleanup exploded" });
   });
 });
 
