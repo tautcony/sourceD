@@ -358,5 +358,29 @@
   "dashboardDomainSummary": {
     "message": "$1 个页面 · $2 个版本",
     "description": "domain 汇总"
+  },
+  "dashboardPreviewSources": {
+    "message": "预览源文件",
+    "description": "预览源文件按钮"
+  },
+  "dashboardPreviewTitle": {
+    "message": "源文件预览",
+    "description": "源文件预览抽屉标题"
+  },
+  "dashboardPreviewEmpty": {
+    "message": "未找到可还原的源文件。",
+    "description": "源文件预览空状态"
+  },
+  "dashboardCleanup": {
+    "message": "清理异常数据",
+    "description": "清理按钮"
+  },
+  "dashboardCleanupDone": {
+    "message": "已清理 $1 个无效版本",
+    "description": "清理结果消息"
+  },
+  "dashboardCleanupNone": {
+    "message": "未发现异常数据",
+    "description": "清理无需操作消息"
   }
 }

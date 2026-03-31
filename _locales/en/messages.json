@@ -358,5 +358,29 @@
   "dashboardDomainSummary": {
     "message": "$1 pages · $2 versions",
     "description": "Dashboard domain summary"
+  },
+  "dashboardPreviewSources": {
+    "message": "Preview sources",
+    "description": "Dashboard preview sources button"
+  },
+  "dashboardPreviewTitle": {
+    "message": "Source Preview",
+    "description": "Dashboard source preview drawer title"
+  },
+  "dashboardPreviewEmpty": {
+    "message": "No recoverable source files found.",
+    "description": "Dashboard source preview empty state"
+  },
+  "dashboardCleanup": {
+    "message": "Clean up",
+    "description": "Dashboard cleanup button"
+  },
+  "dashboardCleanupDone": {
+    "message": "Cleaned $1 invalid versions",
+    "description": "Dashboard cleanup result message"
+  },
+  "dashboardCleanupNone": {
+    "message": "No invalid data found",
+    "description": "Dashboard cleanup nothing to clean message"
   }
 }

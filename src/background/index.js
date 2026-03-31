@@ -769,6 +769,44 @@ chrome.runtime.onMessage.addListener(function (message, _sender, sendResponse) {
     });
     return true;
   }
+
+  if (message.action === "cleanupData") {
+    var allIds = Object.keys(versionIndex);
+    if (allIds.length === 0) {
+      sendResponse({ ok: true, cleaned: [] });
+      return;
+    }
+
+    Promise.all(allIds.map(function (id) {
+      var meta = versionIndex[id];
+      if (!meta || !meta.mapUrls || meta.mapUrls.length === 0) {
+        return { id: id, pageUrl: meta ? meta.pageUrl : "", reason: "no_maps_metadata", mapCount: 0, bad: true };
+      }
+      return loadVersionFiles(id).then(function (files) {
+        if (!files || files.length === 0) {
+          return { id: id, pageUrl: meta.pageUrl, reason: "all_maps_missing", mapCount: meta.mapUrls.length, bad: true };
+        }
+        return { id: id, bad: false };
+      });
+    })).then(function (results) {
+      var badVersions = results.filter(function (r) { return r.bad; });
+      if (badVersions.length === 0) {
+        sendResponse({ ok: true, cleaned: [] });
+        return;
+      }
+      var removeIds = badVersions.map(function (v) { return v.id; });
+      return deleteVersions(removeIds).then(function () {
+        removeVersionsFromIndexes(removeIds);
+        refreshBadgeForActiveTab();
+        broadcastSummary();
+        sendResponse({ ok: true, cleaned: badVersions.map(function (v) { return { id: v.id, pageUrl: v.pageUrl, reason: v.reason, mapCount: v.mapCount }; }) });
+      });
+    }).catch(function (err) {
+      console.error("[SourceD] cleanup failed:", err);
+      sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+    });
+    return true;
+  }
 });
 
 Promise.all([listAllVersions(), loadSettings()]).then(function (results) {
