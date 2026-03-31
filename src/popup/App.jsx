@@ -43,8 +43,8 @@ function toAntdTreeData(node, pathPrefix = "") {
   for (const file of sortedFiles) {
     children.push({
       title: (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%" }}>
-          <Text ellipsis={{ tooltip: file.url }} style={{ flex: 1, minWidth: 0 }}>{file.name}</Text>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
+          <Text ellipsis={{ tooltip: file.url }} style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>{file.name}</Text>
           <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fileSizeIEC(file.size)}</Text>
         </span>
       ),
@@ -136,6 +136,17 @@ export default function PopupApp() {
       algorithm: theme.compactAlgorithm,
       token: { fontSize: 13 },
     }}>
+      <style>{`
+        .ant-tree { width: 100%; min-width: 0; overflow: hidden; }
+        .ant-tree-list,
+        .ant-tree-list-holder,
+        .ant-tree-list-holder-inner { width: 100%; min-width: 0; overflow: hidden; }
+        .ant-tree .ant-tree-treenode { display: flex; align-items: center; width: 100%; min-width: 0; white-space: nowrap; }
+        .ant-tree-node-content-wrapper { display: flex !important; align-items: center; flex: 1 1 auto; min-width: 0; max-width: 100%; overflow: hidden; }
+        .ant-tree-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; width: 100%; }
+        .ant-tree-list-holder-inner .ant-tree-treenode .ant-tree-switcher { flex: 0 0 auto; }
+        .ant-tree-list-holder-inner .ant-tree-treenode .ant-tree-iconEle { flex: 0 0 auto; }
+      `}</style>
       <Flex vertical style={{ minHeight: 300, maxHeight: 620, overflow: "hidden", minWidth: 560, maxWidth: 840 }}>
         {/* Header */}
         <Flex vertical gap={4} style={{ padding: "14px 18px 12px", borderBottom: "1px solid #dde4ec", background: "#fafbfc" }}>
@@ -188,10 +199,11 @@ export default function PopupApp() {
               </Flex>
               <Tree
                 showIcon
+                blockNode
                 defaultExpandAll
                 treeData={treeData}
                 onSelect={handleFileSelect}
-                style={{ fontSize: 12 }}
+                style={{ fontSize: 12, width: "100%", minWidth: 0, overflow: "hidden" }}
               />
             </Flex>
           )}

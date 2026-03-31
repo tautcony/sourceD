@@ -104,8 +104,8 @@ function toAntdTreeData(node, pathPrefix = "") {
   for (const file of [...node.files].sort((a, b) => a.name.localeCompare(b.name))) {
     children.push({
       title: (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%" }}>
-          <Text ellipsis={{ tooltip: file.url }} style={{ flex: 1, minWidth: 0 }}>{file.name}</Text>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
+          <Text ellipsis={{ tooltip: file.url }} style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>{file.name}</Text>
           <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fileSizeIEC(file.size)}</Text>
         </span>
       ),
@@ -151,8 +151,8 @@ function toSourceTreeData(node, pathPrefix = "") {
   for (const file of [...node.files].sort((a, b) => a.name.localeCompare(b.name))) {
     children.push({
       title: (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{file.name}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", minWidth: 0, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden" }}>
+          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{file.name}</span>
           <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fileSizeIEC(file.size)}</Text>
         </span>
       ),
@@ -287,7 +287,7 @@ function VersionPanel({ version, onReload }) {
           </Button>
         </Space>
       </Flex>
-      <Tree showIcon defaultExpandAll treeData={treeData} style={{ fontSize: 12 }} />
+      <Tree showIcon blockNode defaultExpandAll treeData={treeData} style={{ fontSize: 12, width: "100%", minWidth: 0, overflow: "hidden" }} />
       <Drawer
         title={i18nMessage("dashboardPreviewTitle")}
         open={previewOpen}
@@ -301,10 +301,11 @@ function VersionPanel({ version, onReload }) {
             <div style={{ width: 360, minWidth: 260, borderRight: "1px solid #f0f0f0", overflow: "auto", padding: "8px 0" }}>
               <Tree
                 showIcon
+                blockNode
                 defaultExpandAll
                 treeData={sourceTreeData}
                 onSelect={handleTreeSelect}
-                style={{ fontSize: 12 }}
+                style={{ fontSize: 12, width: "100%", minWidth: 0, overflow: "hidden" }}
               />
             </div>
             <div style={{ flex: 1, overflow: "auto", padding: 0 }}>
@@ -512,9 +513,15 @@ export default function DashboardApp() {
         <style>{`
           .ant-collapse-header { overflow: hidden; }
           .ant-collapse-header-text { overflow: hidden; min-width: 0; flex: 1; }
-          .ant-tree-node-content-wrapper { display: inline-flex !important; align-items: center; flex-wrap: nowrap; min-width: 0; max-width: 100%; }
-          .ant-tree-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-          .ant-tree .ant-tree-treenode { white-space: nowrap; }
+          .ant-tree { width: 100%; min-width: 0; overflow: hidden; }
+          .ant-tree-list,
+          .ant-tree-list-holder,
+          .ant-tree-list-holder-inner { width: 100%; min-width: 0; overflow: hidden; }
+          .ant-tree .ant-tree-treenode { display: flex; align-items: center; width: 100%; min-width: 0; white-space: nowrap; }
+          .ant-tree-node-content-wrapper { display: flex !important; align-items: center; flex: 1 1 auto; min-width: 0; max-width: 100%; overflow: hidden; }
+          .ant-tree-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; width: 100%; }
+          .ant-tree-list-holder-inner .ant-tree-treenode .ant-tree-switcher { flex: 0 0 auto; }
+          .ant-tree-list-holder-inner .ant-tree-treenode .ant-tree-iconEle { flex: 0 0 auto; }
         `}</style>
         <Flex vertical gap={24} style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
         {/* Hero */}
