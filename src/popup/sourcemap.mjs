@@ -66,11 +66,11 @@ function addZipFile(root, filename, content) {
 
 function blobToDownload(filename, blob) {
   return new Promise(function (resolve) {
-    var reader = new FileReader();
-    reader.readAsDataURL(blob);
-    reader.onloadend = function () {
-      chrome.downloads.download({ filename: filename, url: reader.result }, resolve);
-    };
+    var objectUrl = URL.createObjectURL(blob);
+    chrome.downloads.download({ filename: filename, url: objectUrl }, function (downloadId) {
+      URL.revokeObjectURL(objectUrl);
+      resolve(downloadId);
+    });
   });
 }
 
@@ -90,7 +90,7 @@ function defaultZipBaseName(files) {
   var first = files && files[0];
   var pageUrl = first && first.page && first.page.url ? first.page.url : "sourced";
   return sanitizeFilename(pageUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "")) +
-    "_" + timestampSlug();
+    "_" + timestampSlug(new Date().toISOString());
 }
 
 export function versionZipBaseName(files, version) {

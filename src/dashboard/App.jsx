@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Button, Space, Typography, Tree, Empty, Spin, Flex, ConfigProvider,
-  Card, Collapse, Statistic, Form, InputNumber, Switch, Tag, App, Drawer, Input, Modal, List,
+  Card, Collapse, Statistic, Form, InputNumber, Switch, Tag, App, Drawer, Input, Modal,
 } from "antd";
 import {
   ReloadOutlined, DownloadOutlined, DeleteOutlined,
@@ -351,8 +351,12 @@ function SettingsSection({ settings, onReload }) {
         maxVersionsPerPage: Number(values.maxVersionsPerPage) || 10,
         autoCleanup: !!values.autoCleanup,
       },
-    }, () => {
+    }, (resp) => {
       setSaving(false);
+      if (!resp?.ok) {
+        message.error(resp?.error || i18nMessage("dashboardSaveFailed"));
+        return;
+      }
       message.success(i18nMessage("dashboardSaved"));
       onReload();
     });
@@ -461,19 +465,24 @@ function ImportMapsModal({ open, importing, onCancel, onImport }) {
             aria-label={i18nMessage("dashboardImportFileLabel")}
           />
           {selectedFiles.length ? (
-            <List
-              size="small"
-              bordered
-              dataSource={selectedFiles}
-              renderItem={(file) => (
-                <List.Item>
-                  <Flex justify="space-between" align="center" style={{ width: "100%", minWidth: 0 }}>
-                    <Text ellipsis={{ tooltip: file.name }} style={{ minWidth: 0 }}>{file.name}</Text>
-                    <Text type="secondary" style={{ marginLeft: 8, flexShrink: 0 }}>{fileSizeIEC(file.size || 0)}</Text>
-                  </Flex>
-                </List.Item>
-              )}
-            />
+            <div style={{ border: "1px solid #f0f0f0", borderRadius: 8, overflow: "hidden" }}>
+              {selectedFiles.map((file, index) => (
+                <Flex
+                  key={`${file.name}-${index}`}
+                  justify="space-between"
+                  align="center"
+                  style={{
+                    width: "100%",
+                    minWidth: 0,
+                    padding: "8px 12px",
+                    borderTop: index === 0 ? "none" : "1px solid #f0f0f0",
+                  }}
+                >
+                  <Text ellipsis={{ tooltip: file.name }} style={{ minWidth: 0 }}>{file.name}</Text>
+                  <Text type="secondary" style={{ marginLeft: 8, flexShrink: 0 }}>{fileSizeIEC(file.size || 0)}</Text>
+                </Flex>
+              ))}
+            </div>
           ) : (
             <Text type="secondary" style={{ fontSize: 12 }}>
               {i18nMessage("dashboardImportEmpty")}

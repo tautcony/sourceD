@@ -13,18 +13,9 @@ function makeSourceMap(sources, sourcesContent) {
   });
 }
 
-// Mock FileReader for blobToDownload
-class MockFileReader {
-  readAsDataURL() {
-    setTimeout(() => {
-      this.result = "data:application/zip;base64,AAAA";
-      if (this.onloadend) this.onloadend();
-    }, 0);
-  }
-}
-
 beforeEach(() => {
-  globalThis.FileReader = MockFileReader;
+  URL.createObjectURL = vi.fn(() => "blob:mock-download");
+  URL.revokeObjectURL = vi.fn();
   chrome.downloads.download = vi.fn((opts, cb) => { if (cb) cb(1); });
 });
 
@@ -261,6 +252,36 @@ describe("versionZipBaseName", () => {
     const result = versionZipBaseName(files, version);
     expect(result).toContain("unknown-time");
   });
+
+  it("uses the current timestamp for default batch zip names", async () => {
+    const RealDate = Date;
+    globalThis.Date = class extends RealDate {
+      constructor(...args) {
+        if (args.length === 0) {
+          return new RealDate("2026-03-31T09:10:11.000Z");
+        }
+        return new RealDate(...args);
+      }
+
+      static now() {
+        return new RealDate("2026-03-31T09:10:11.000Z").getTime();
+      }
+    };
+
+    try {
+      const content = makeSourceMap(["src/app.js"], ["const app = 1;"]);
+      const files = [{ url: "https://example.com/bundle.js.map", content, page: { url: "https://example.com/app" } }];
+
+      await downloadGroup(files);
+
+      expect(chrome.downloads.download).toHaveBeenCalledWith(
+        expect.objectContaining({ filename: "example.com_2026-03-31T09-10-11.zip" }),
+        expect.any(Function),
+      );
+    } finally {
+      globalThis.Date = RealDate;
+    }
+  });
 });
 
 describe("parseSourceMap", () => {
@@ -268,9 +289,10 @@ describe("parseSourceMap", () => {
     const content = makeSourceMap(["src/index.js"], ['console.log("hello");']);
     await parseSourceMap("bundle.js.map", content);
     expect(chrome.downloads.download).toHaveBeenCalledWith(
-      expect.objectContaining({ filename: "bundle.js.map.zip" }),
+      expect.objectContaining({ filename: "bundle.js.map.zip", url: "blob:mock-download" }),
       expect.any(Function),
     );
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:mock-download");
   });
 
   it("does not download when no extractable sources", async () => {

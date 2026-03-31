@@ -47,32 +47,40 @@
     "message": "What It Does",
     "description": "Options section title"
   },
-  "optionsWhatItDoesBody": {
-    "message": "SourceD watches JavaScript requests, locates <code>sourceMappingURL</code>, keeps only valid source maps with <code>sourcesContent</code>, and lets you download the reconstructed source tree from the popup.",
-    "description": "Options section body"
+  "optionsWhatItDoesBodyPrefix": {
+    "message": "SourceD watches JavaScript requests, locates",
+    "description": "Options section body prefix"
+  },
+  "optionsWhatItDoesBodyMiddle": {
+    "message": "keeps only valid source maps with",
+    "description": "Options section body middle"
+  },
+  "optionsWhatItDoesBodySuffix": {
+    "message": "and lets you download the reconstructed source tree from the popup.",
+    "description": "Options section body suffix"
   },
   "optionsPermissionsTitle": {
     "message": "Permissions",
     "description": "Options section title"
   },
-  "optionsPermissionWebRequest": {
-    "message": "<code>webRequest</code> to detect JavaScript files that may reference a source map",
+  "optionsPermissionWebRequestBody": {
+    "message": "to detect JavaScript files that may reference a source map",
     "description": "Permission explanation"
   },
-  "optionsPermissionDownloads": {
-    "message": "<code>downloads</code> to save recovered source archives",
+  "optionsPermissionDownloadsBody": {
+    "message": "to save recovered source archives",
     "description": "Permission explanation"
   },
-  "optionsPermissionTabs": {
-    "message": "<code>tabs</code> to associate findings with the active page",
+  "optionsPermissionTabsBody": {
+    "message": "to associate findings with the active page",
     "description": "Permission explanation"
   },
-  "optionsPermissionStorage": {
-    "message": "<code>storage</code> to keep map metadata and content locally",
+  "optionsPermissionStorageBody": {
+    "message": "to keep map metadata and content locally",
     "description": "Permission explanation"
   },
-  "optionsPermissionHosts": {
-    "message": "<code>&lt;all_urls&gt;</code> because source maps may be hosted on any origin",
+  "optionsPermissionHostsBody": {
+    "message": "because source maps may be hosted on any origin",
     "description": "Permission explanation"
   },
   "optionsPrivacyTitle": {
@@ -306,6 +314,10 @@
   "dashboardSaved": {
     "message": "Saved",
     "description": "Dashboard saved status"
+  },
+  "dashboardSaveFailed": {
+    "message": "Failed to save settings",
+    "description": "Dashboard failed save status"
   },
   "dashboardLoading": {
     "message": "Loading...",

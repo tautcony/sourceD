@@ -54,6 +54,8 @@ function mockDashboardData(data, extraHandlers = {}) {
         totalVersions: data.totalVersions || 0,
         totalStorageBytes: data.totalStorageBytes || 0,
       });
+    } else if (extraHandlers[msg.action]) {
+      extraHandlers[msg.action](msg, cb);
     } else if (msg.action === "getVersionFiles") {
       cb({ ok: true, files: data.versionFiles || mockVersionFiles });
     } else if (msg.action === "deleteVersion") {
@@ -61,8 +63,6 @@ function mockDashboardData(data, extraHandlers = {}) {
       // Simulate reload by calling getDashboardData again
     } else if (msg.action === "updateSettings") {
       cb({ ok: true });
-    } else if (extraHandlers[msg.action]) {
-      extraHandlers[msg.action](msg, cb);
     } else {
       cb(null);
     }
@@ -816,6 +816,24 @@ describe("DashboardApp", () => {
         expect.any(Function),
       );
     });
+  });
+
+  it("shows an error when saving settings fails", async () => {
+    mockDashboardData({ pages: [], totalVersions: 0, totalStorageBytes: 0 }, {
+      updateSettings: (_msg, cb) => {
+        cb({ ok: false, error: "settings exploded" });
+      },
+    });
+
+    render(<DashboardApp />);
+    await screen.findByText("No history yet.");
+
+    fireEvent.click(screen.getByText("Save Settings").closest("button"));
+
+    await waitFor(() => {
+      expect(messageApi.error).toHaveBeenCalledWith("settings exploded");
+    });
+    expect(messageApi.success).not.toHaveBeenCalled();
   });
 
   it("renders settings form with initial values", async () => {

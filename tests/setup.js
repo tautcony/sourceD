@@ -22,6 +22,9 @@ globalThis.ResizeObserver = class {
   disconnect() {}
 };
 
+globalThis.URL.createObjectURL = () => "blob:mock-download";
+globalThis.URL.revokeObjectURL = () => {};
+
 // Mock getComputedStyle
 const origGetComputedStyle = window.getComputedStyle;
 window.getComputedStyle = (elt, pseudoElt) => {
@@ -70,6 +73,7 @@ globalThis.chrome = {
         dashboardSettingAutoCleanup: "Automatically prune old history",
         dashboardSaveSettings: "Save Settings",
         dashboardSaved: "Saved",
+        dashboardSaveFailed: "Failed to save settings",
         dashboardEmptyHistory: "No history yet.",
         dashboardEmptyDistribution: "No distribution data yet.",
         dashboardDomainSummary: `${substitutions?.[0] ?? ""} pages · ${substitutions?.[1] ?? ""} versions`,
@@ -108,13 +112,15 @@ globalThis.chrome = {
         optionsCachedMaps: "Stored Versions",
         optionsTrackedPages: "Tracked Pages",
         optionsWhatItDoesTitle: "What It Does",
-        optionsWhatItDoesBody: "SourceD watches JavaScript requests...",
+        optionsWhatItDoesBodyPrefix: "SourceD watches JavaScript requests, locates",
+        optionsWhatItDoesBodyMiddle: ", keeps only valid source maps with",
+        optionsWhatItDoesBodySuffix: ", and lets you download the reconstructed source tree from the popup.",
         optionsPermissionsTitle: "Permissions",
-        optionsPermissionWebRequest: "<code>webRequest</code> to detect",
-        optionsPermissionDownloads: "<code>downloads</code> to save",
-        optionsPermissionTabs: "<code>tabs</code> to associate",
-        optionsPermissionStorage: "<code>storage</code> to keep",
-        optionsPermissionHosts: "<code>all_urls</code> because",
+        optionsPermissionWebRequestBody: "to detect JavaScript files that may reference a source map",
+        optionsPermissionDownloadsBody: "to save recovered source archives",
+        optionsPermissionTabsBody: "to associate findings with the active page",
+        optionsPermissionStorageBody: "to keep map metadata and content locally",
+        optionsPermissionHostsBody: "because source maps may be hosted on any origin",
         optionsPrivacyTitle: "Privacy",
         optionsPrivacyLocal: "Processing happens locally",
         optionsPrivacyNoRemote: "No collected map data is sent",

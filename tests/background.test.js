@@ -4,6 +4,7 @@ function createChromeMock() {
   const listeners = {
     onMessage: null,
     onBeforeRequest: null,
+    onConnect: null,
   };
 
   return {
@@ -17,7 +18,9 @@ function createChromeMock() {
           }),
         },
         onConnect: {
-          addListener: vi.fn(),
+          addListener: vi.fn((fn) => {
+            listeners.onConnect = fn;
+          }),
         },
       },
       tabs: {
@@ -162,6 +165,198 @@ describe("background runtime regressions", () => {
 
     expect(chrome.webRequest.onBeforeRequest.addListener).toHaveBeenCalledTimes(1);
   });
+
+  it("returns an error for unknown actions", async () => {
+    const { chrome, listeners } = createChromeMock();
+    globalThis.chrome = chrome;
+
+    vi.doMock("../src/background/storage.mjs", () => ({
+      broadcastSummary: vi.fn(),
+      compactStorageData: vi.fn(),
+      currentSettings: vi.fn(() => ({ detectionEnabled: true })),
+      deletePageHistoryAndSessions: vi.fn(),
+      deleteSiteHistoryAndSessions: vi.fn(),
+      deleteVersions: vi.fn(),
+      distributionSummary: vi.fn(() => []),
+      ensureStorageReady: vi.fn(() => Promise.resolve()),
+      importSourceMapsForPage: vi.fn(),
+      loadSettings: vi.fn(() => Promise.resolve({ detectionEnabled: true })),
+      loadVersionFiles: vi.fn(() => Promise.resolve([])),
+      prunePageHistory: vi.fn(() => Promise.resolve()),
+      pushSummary: vi.fn(),
+      removeVersionsFromIndexes: vi.fn(),
+      saveSettings: vi.fn(() => Promise.resolve()),
+      summarizePages: vi.fn(() => []),
+      totalStorageBytes: vi.fn(() => 0),
+    }));
+
+    vi.doMock("../src/background/sessions.mjs", () => ({
+      cleanupTabSession: vi.fn(),
+      fetchSourceMap: vi.fn(),
+      getOrCreateSession: vi.fn(),
+      isValidSourceMap: vi.fn(() => true),
+      scheduleSessionPersist: vi.fn(),
+    }));
+
+    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
+
+    const sendResponse = vi.fn();
+    listeners.onMessage({ action: "mystery" }, {}, sendResponse);
+
+    expect(sendResponse).toHaveBeenCalledWith({ ok: false, error: "unknown action" });
+  });
+
+  it("captures clearAll ids before async deletion and reports failures to the popup", async () => {
+    const { chrome, listeners } = createChromeMock();
+    globalThis.chrome = chrome;
+
+    let resolveDelete;
+    const deleteVersions = vi.fn(() => new Promise((resolve) => {
+      resolveDelete = resolve;
+    }));
+    const removeVersionsFromIndexes = vi.fn();
+    const broadcastSummary = vi.fn();
+
+    vi.doMock("../src/background/storage.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage.mjs");
+      return {
+        ...actual,
+        broadcastSummary,
+        compactStorageData: vi.fn(),
+        currentSettings: vi.fn(() => ({ detectionEnabled: true })),
+        deletePageHistoryAndSessions: vi.fn(),
+        deleteSiteHistoryAndSessions: vi.fn(),
+        deleteVersions,
+        distributionSummary: vi.fn(() => []),
+        ensureStorageReady: vi.fn(() => Promise.resolve()),
+        importSourceMapsForPage: vi.fn(),
+        loadSettings: vi.fn(() => Promise.resolve({ detectionEnabled: true })),
+        loadVersionFiles: vi.fn(() => Promise.resolve([])),
+        prunePageHistory: vi.fn(() => Promise.resolve()),
+        pushSummary: vi.fn(),
+        removeVersionsFromIndexes,
+        saveSettings: vi.fn(() => Promise.resolve()),
+        summarizePages: vi.fn(() => []),
+        totalStorageBytes: vi.fn(() => 0),
+      };
+    });
+
+    vi.doMock("../src/background/sessions.mjs", () => ({
+      cleanupTabSession: vi.fn(),
+      fetchSourceMap: vi.fn(),
+      getOrCreateSession: vi.fn(),
+      isValidSourceMap: vi.fn(() => true),
+      scheduleSessionPersist: vi.fn(),
+    }));
+
+    const runtime = await import("../src/background/runtime.mjs");
+    const shared = await import("../src/background/shared.mjs");
+
+    runtime.registerRuntimeListeners();
+
+    const port = {
+      name: "popup",
+      postMessage: vi.fn(),
+      onDisconnect: { addListener: vi.fn() },
+      onMessage: {
+        addListener: vi.fn((fn) => {
+          port._listener = fn;
+        }),
+      },
+    };
+
+    listeners.onConnect(port);
+    shared.state.versionIndex = {
+      first: { id: "first", lastSeenAt: "2026-01-01T00:00:00.000Z" },
+      second: { id: "second", lastSeenAt: "2026-01-01T00:00:00.000Z" },
+    };
+
+    port._listener({ action: "clearAll" });
+    shared.state.versionIndex.third = { id: "third", lastSeenAt: "2026-01-01T00:00:00.000Z" };
+    resolveDelete();
+    await flushPromises();
+
+    expect(deleteVersions).toHaveBeenCalledWith(["first", "second"]);
+    expect(removeVersionsFromIndexes).toHaveBeenCalledWith(["first", "second"]);
+    expect(broadcastSummary).toHaveBeenCalled();
+
+    deleteVersions.mockImplementationOnce(() => Promise.reject(new Error("delete exploded")));
+    port._listener({ action: "clearAll" });
+    await flushPromises();
+
+    expect(port.postMessage).toHaveBeenCalledWith({
+      type: "error",
+      action: "clearAll",
+      error: "delete exploded",
+    });
+  });
+
+  it("drops fetched maps when the tab session has changed", async () => {
+    const { chrome, listeners } = createChromeMock();
+    globalThis.chrome = chrome;
+
+    chrome.tabs.get = vi.fn((tabId, cb) => {
+      cb({ id: tabId, url: "https://example.com/app", title: "Example" });
+    });
+
+    const scheduleSessionPersist = vi.fn();
+    const fetchSourceMap = vi.fn((_url, cb) => {
+      cb("https://example.com/app.js.map", '{"version":3,"sources":["a"],"sourcesContent":["a"]}');
+    });
+    const session = {
+      tabId: 8,
+      pageUrl: "https://example.com/app",
+      title: "Example",
+      maps: {},
+      versionId: null,
+      versionOwned: false,
+      signature: null,
+      timer: null,
+    };
+
+    vi.doMock("../src/background/storage.mjs", () => ({
+      broadcastSummary: vi.fn(),
+      compactStorageData: vi.fn(),
+      currentSettings: vi.fn(() => ({ detectionEnabled: true })),
+      deletePageHistoryAndSessions: vi.fn(),
+      deleteSiteHistoryAndSessions: vi.fn(),
+      deleteVersions: vi.fn(),
+      distributionSummary: vi.fn(() => []),
+      ensureStorageReady: vi.fn(() => Promise.resolve()),
+      importSourceMapsForPage: vi.fn(),
+      loadSettings: vi.fn(() => Promise.resolve({ detectionEnabled: true })),
+      loadVersionFiles: vi.fn(() => Promise.resolve([])),
+      prunePageHistory: vi.fn(() => Promise.resolve()),
+      pushSummary: vi.fn(),
+      removeVersionsFromIndexes: vi.fn(),
+      saveSettings: vi.fn(() => Promise.resolve()),
+      summarizePages: vi.fn(() => []),
+      totalStorageBytes: vi.fn(() => 0),
+    }));
+
+    vi.doMock("../src/background/sessions.mjs", () => ({
+      cleanupTabSession: vi.fn(),
+      fetchSourceMap,
+      getOrCreateSession: vi.fn(() => session),
+      isValidSourceMap: vi.fn(() => true),
+      scheduleSessionPersist,
+    }));
+
+    const runtime = await import("../src/background/runtime.mjs");
+    const shared = await import("../src/background/shared.mjs");
+
+    runtime.registerRuntimeListeners();
+    shared.state.tabSessions[8] = { tabId: 8, pageUrl: "https://example.com/other", maps: {} };
+
+    listeners.onBeforeRequest({
+      type: "script",
+      url: "https://example.com/app.js",
+      tabId: 8,
+    });
+
+    expect(session.maps).toEqual({});
+    expect(scheduleSessionPersist).not.toHaveBeenCalled();
+  });
 });
 
 describe("session persistence regressions", () => {
@@ -272,6 +467,124 @@ describe("session persistence regressions", () => {
     expect(Object.keys(shared.state.versionIndex)).toEqual([]);
     expect(shared.state.versionsByPage["https://example.com/app"] || []).toEqual([]);
   });
+
+  it("keeps a new version visible in memory when post-persist pruning fails", async () => {
+    vi.doMock("../src/background/storage.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage.mjs");
+      return {
+        ...actual,
+        broadcastSummary: vi.fn(),
+        currentSettings: vi.fn(() => ({ autoCleanup: true })),
+        persistVersionState: vi.fn(() => Promise.resolve()),
+        prunePageHistory: vi.fn(() => Promise.reject(new Error("prune exploded"))),
+      };
+    });
+
+    const shared = await import("../src/background/shared.mjs");
+    const sessions = await import("../src/background/sessions.mjs");
+
+    shared.state.versionIndex = {};
+    shared.state.versionsByPage = {};
+    shared.state.tabSessions = {};
+
+    const session = {
+      tabId: 9,
+      pageUrl: "https://example.com/app",
+      title: "Example",
+      maps: {
+        "https://example.com/app.js.map": "hello world",
+      },
+      versionId: null,
+      versionOwned: false,
+      signature: null,
+      timer: null,
+    };
+
+    await expect(sessions.upsertSessionVersion(session)).rejects.toThrow("prune exploded");
+
+    expect(session.versionId).toBeTruthy();
+    expect(shared.state.versionIndex[session.versionId]).toBeTruthy();
+    expect(shared.state.versionsByPage["https://example.com/app"]).toContain(session.versionId);
+  });
+
+  it("detects hash collisions before deduplicating blobs", async () => {
+    vi.doMock("../src/background/shared.mjs", async () => {
+      const actual = await vi.importActual("../src/background/shared.mjs");
+      return {
+        ...actual,
+        hashString: vi.fn(() => "collision"),
+      };
+    });
+
+    vi.doMock("../src/background/storage.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage.mjs");
+      return {
+        ...actual,
+        broadcastSummary: vi.fn(),
+        currentSettings: vi.fn(() => ({ autoCleanup: false })),
+        persistVersionState: vi.fn(() => Promise.resolve()),
+        prunePageHistory: vi.fn(() => Promise.resolve()),
+      };
+    });
+
+    const sessions = await import("../src/background/sessions.mjs");
+
+    expect(() => sessions.buildSessionArtifacts({
+      pageUrl: "https://example.com/app",
+      maps: {
+        "https://example.com/a.map": "first",
+        "https://example.com/b.map": "second",
+      },
+    })).toThrow("hash collision detected");
+  });
+
+  it("defers session persistence while storage compaction is in progress", async () => {
+    vi.useFakeTimers();
+
+    vi.doMock("../src/background/storage.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage.mjs");
+      return {
+        ...actual,
+        broadcastSummary: vi.fn(),
+        currentSettings: vi.fn(() => ({ autoCleanup: false })),
+        persistVersionState: vi.fn(() => Promise.resolve()),
+        prunePageHistory: vi.fn(() => Promise.resolve()),
+      };
+    });
+
+    const shared = await import("../src/background/shared.mjs");
+    const sessions = await import("../src/background/sessions.mjs");
+    const storage = await import("../src/background/storage.mjs");
+
+    shared.state.storageCompactionInProgress = true;
+    shared.state.versionIndex = {};
+    shared.state.versionsByPage = {};
+
+    const session = {
+      tabId: 3,
+      pageUrl: "https://example.com/app",
+      title: "Example",
+      maps: {
+        "https://example.com/app.js.map": "hello world",
+      },
+      versionId: null,
+      versionOwned: false,
+      signature: null,
+      timer: null,
+    };
+
+    sessions.scheduleSessionPersist(session);
+    vi.advanceTimersByTime(1400);
+    await flushPromises();
+    expect(storage.persistVersionState).not.toHaveBeenCalled();
+
+    shared.state.storageCompactionInProgress = false;
+    vi.advanceTimersByTime(1400);
+    await flushPromises();
+    expect(storage.persistVersionState).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+  });
 });
 
 describe("storage compaction regressions", () => {
@@ -356,5 +669,122 @@ describe("storage compaction regressions", () => {
     expect(result.invalidVersions).toEqual([]);
     expect(result.desiredRefs).toHaveLength(1);
     expect(result.desiredRefs[0].value.mapUrl).toBe("https://example.com/a.map");
+  });
+
+  it("rejects blocked IndexedDB openings", async () => {
+    const shared = await import("../src/background/shared.mjs");
+    shared.state.dbPromise = null;
+
+    globalThis.indexedDB = {
+      open: vi.fn(() => {
+        const req = { result: null, error: null, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+        queueMicrotask(() => {
+          req.onblocked?.();
+        });
+        return req;
+      }),
+    };
+
+    const storage = await import("../src/background/storage.mjs");
+
+    await expect(storage.getDb()).rejects.toThrow("indexedDB open blocked");
+  });
+});
+
+describe("fetchSourceMap regressions", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+    vi.useFakeTimers();
+  });
+
+  it("times out stalled fetches", async () => {
+    globalThis.fetch = vi.fn((_url, options = {}) => new Promise((_resolve, reject) => {
+      options.signal?.addEventListener("abort", () => {
+        reject(new DOMException("Aborted", "AbortError"));
+      });
+    }));
+
+    const shared = await import("../src/background/shared.mjs");
+    const sessions = await import("../src/background/sessions.mjs");
+    const callback = vi.fn();
+
+    sessions.fetchSourceMap("https://example.com/app.js", callback);
+    await vi.advanceTimersByTimeAsync(30300);
+
+    expect(callback).not.toHaveBeenCalled();
+    expect(shared.state.pendingSourceMapFetches.size).toBeLessThanOrEqual(1);
+  });
+
+  it("rejects oversized source map responses", async () => {
+    globalThis.fetch = vi.fn((url) => {
+      if (url.endsWith(".js")) {
+        return Promise.resolve({
+          ok: true,
+          headers: { get: () => "128" },
+          text: () => Promise.resolve("//# sourceMappingURL=https://example.com/app.js.map"),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        headers: { get: () => String(51 * 1024 * 1024) },
+        text: () => Promise.resolve("{}"),
+      });
+    });
+
+    const sessions = await import("../src/background/sessions.mjs");
+    const callback = vi.fn();
+
+    sessions.fetchSourceMap("https://example.com/app.js", callback);
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("decodes inline UTF-8 source maps correctly", async () => {
+    const inlineMap = '{"version":3,"sources":["src/中文.js"],"sourcesContent":["console.log(\\"你好\\")"]}';
+    const base64 = btoa(String.fromCharCode(...new TextEncoder().encode(inlineMap)));
+
+    globalThis.fetch = vi.fn(() => Promise.resolve({
+      ok: true,
+      headers: { get: () => "128" },
+      text: () => Promise.resolve(`//# sourceMappingURL=data:application/json;base64,${base64}`),
+    }));
+
+    const sessions = await import("../src/background/sessions.mjs");
+    const callback = vi.fn();
+
+    sessions.fetchSourceMap("https://example.com/app.js", callback);
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(callback).toHaveBeenCalledWith("https://example.com/app.js.map", inlineMap);
+  });
+
+  it("deduplicates concurrent fetches for the same script url", async () => {
+    globalThis.fetch = vi.fn((url) => {
+      if (url.endsWith(".js")) {
+        return Promise.resolve({
+          ok: true,
+          headers: { get: () => "128" },
+          text: () => Promise.resolve("//# sourceMappingURL=https://example.com/app.js.map"),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        headers: { get: () => "16" },
+        text: () => Promise.resolve('{"version":3}'),
+      });
+    });
+
+    const sessions = await import("../src/background/sessions.mjs");
+    const callback = vi.fn();
+
+    sessions.fetchSourceMap("https://example.com/app.js", callback);
+    sessions.fetchSourceMap("https://example.com/app.js", callback);
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(callback).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });

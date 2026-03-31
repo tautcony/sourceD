@@ -17,6 +17,34 @@ import {
   prunePageHistory,
 } from "./storage.mjs";
 
+const SOURCE_MAP_FETCH_DELAY_MS = 300;
+const SOURCE_MAP_FETCH_TIMEOUT_MS = 30_000;
+const SOURCE_MAP_MAX_BYTES = 50 * 1024 * 1024;
+
+function base64ToUtf8(base64) {
+  const binary = atob(base64);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function fetchTextWithLimits(url, signal) {
+  return fetch(url, { signal }).then((resp) => {
+    if (!resp.ok) return null;
+
+    const declaredLength = Number(resp.headers?.get?.("content-length") || 0);
+    if (declaredLength > SOURCE_MAP_MAX_BYTES) {
+      throw new Error(`response too large for ${url}`);
+    }
+
+    return resp.text().then((text) => {
+      if (new TextEncoder().encode(text).length > SOURCE_MAP_MAX_BYTES) {
+        throw new Error(`response too large for ${url}`);
+      }
+      return text;
+    });
+  });
+}
+
 export function buildSessionArtifacts(session) {
   const siteKey = pageSiteKey(session.pageUrl);
   const mapUrls = Object.keys(session.maps).sort();
@@ -29,6 +57,9 @@ export function buildSessionArtifacts(session) {
     const content = session.maps[mapUrl];
     const mapHash = hashString(content);
     const blobId = blobStoreKey(siteKey, mapHash);
+    if (blobs[blobId] && blobs[blobId].content !== content) {
+      throw new Error(`hash collision detected for ${mapUrl}`);
+    }
     byteSize += content.length;
     refs.push({
       versionId: "",
@@ -137,16 +168,16 @@ export function upsertSessionVersion(session) {
 
   return persistVersionState(meta, artifacts.refs, artifacts.blobs, null)
     .then(() => {
-      if (currentSettings().autoCleanup) return prunePageHistory(session.pageUrl);
-      return null;
-    })
-    .then(() => {
       session.versionId = newId;
       session.versionOwned = true;
       session.signature = artifacts.signature;
       ensurePageBucket(session.pageUrl).unshift(newId);
       state.versionIndex[newId] = meta;
       sortPageVersions(session.pageUrl);
+      if (currentSettings().autoCleanup) return prunePageHistory(session.pageUrl);
+      return null;
+    })
+    .then(() => {
       refreshBadgeForTab(session.tabId, session.pageUrl);
       broadcastSummary();
     });
@@ -155,6 +186,10 @@ export function upsertSessionVersion(session) {
 export function scheduleSessionPersist(session) {
   if (session.timer) clearTimeout(session.timer);
   session.timer = setTimeout(() => {
+    if (state.storageCompactionInProgress) {
+      scheduleSessionPersist(session);
+      return;
+    }
     upsertSessionVersion(session).catch((err) => {
       console.warn("[SourceD] version save failed:", err && err.message ? err.message : err);
     });
@@ -191,9 +226,16 @@ export function cleanupTabSession(tabId) {
 }
 
 export function fetchSourceMap(jsUrl, callback) {
+  if (state.pendingSourceMapFetches.has(jsUrl)) return;
+  state.pendingSourceMapFetches.add(jsUrl);
+
   setTimeout(() => {
-    fetch(jsUrl)
-      .then((resp) => (resp.ok ? resp.text() : null))
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, SOURCE_MAP_FETCH_TIMEOUT_MS);
+
+    fetchTextWithLimits(jsUrl, controller.signal)
       .then((jsContent) => {
         if (!jsContent) return;
         const match = jsContent.match(/\/\/# sourceMappingURL=([^\s\r\n]+)/);
@@ -203,7 +245,7 @@ export function fetchSourceMap(jsUrl, callback) {
         if (mapRef.startsWith("data:application/json")) {
           const b64 = mapRef.split(",")[1];
           try {
-            callback(`${jsUrl}.map`, atob(b64));
+            callback(`${jsUrl}.map`, base64ToUtf8(b64));
           } catch (e) {
             console.warn("[SourceD] inline map decode error:", e);
           }
@@ -211,8 +253,7 @@ export function fetchSourceMap(jsUrl, callback) {
         }
 
         const mapUrl = /^https?:/.test(mapRef) ? mapRef : new URL(mapRef, jsUrl).href;
-        fetch(mapUrl)
-          .then((resp) => (resp.ok ? resp.text() : null))
+        return fetchTextWithLimits(mapUrl, controller.signal)
           .then((text) => {
             if (text) callback(mapUrl, text);
           })
@@ -222,8 +263,12 @@ export function fetchSourceMap(jsUrl, callback) {
       })
       .catch((e) => {
         console.warn("[SourceD] js fetch error:", e);
+      })
+      .finally(() => {
+        clearTimeout(timeoutId);
+        state.pendingSourceMapFetches.delete(jsUrl);
       });
-  }, 300);
+  }, SOURCE_MAP_FETCH_DELAY_MS);
 }
 
 export function isValidSourceMap(raw) {

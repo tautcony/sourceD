@@ -37,6 +37,14 @@ function errorMessage(err) {
   return err && err.message ? err.message : String(err);
 }
 
+function postPortError(port, action, err) {
+  port.postMessage({
+    type: "error",
+    action,
+    error: errorMessage(err),
+  });
+}
+
 export function registerRuntimeListeners() {
   chrome.tabs.onRemoved.addListener((tabId) => {
     cleanupTabSession(tabId);
@@ -82,6 +90,7 @@ export function registerRuntimeListeners() {
         const session = getOrCreateSession(tab);
 
         fetchSourceMap(details.url, (mapUrl, content) => {
+          if (state.tabSessions[session.tabId] !== session) return;
           if (!isValidSourceMap(content)) return;
           session.maps[mapUrl] = content;
           refreshBadgeForTab(session.tabId, session.pageUrl);
@@ -108,9 +117,12 @@ export function registerRuntimeListeners() {
           port.postMessage({ type: "versionFiles", versionId: msg.versionId, files });
         });
       } else if (msg.action === "clearAll") {
-        deleteVersions(Object.keys(state.versionIndex)).then(() => {
-          removeVersionsFromIndexes(Object.keys(state.versionIndex));
+        const removeIds = Object.keys(state.versionIndex);
+        deleteVersions(removeIds).then(() => {
+          removeVersionsFromIndexes(removeIds);
           broadcastSummary();
+        }).catch((err) => {
+          postPortError(port, "clearAll", err);
         });
       } else if (msg.action === "clearOlderThan7d") {
         const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -121,6 +133,8 @@ export function registerRuntimeListeners() {
           removeVersionsFromIndexes(removeIds);
           refreshBadgeForActiveTab();
           broadcastSummary();
+        }).catch((err) => {
+          postPortError(port, "clearOlderThan7d", err);
         });
       }
     });
@@ -311,6 +325,8 @@ export function registerRuntimeListeners() {
       });
       return true;
     }
+
+    sendResponse({ ok: false, error: "unknown action" });
   });
 }
 

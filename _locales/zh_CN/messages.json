@@ -47,32 +47,40 @@
     "message": "功能说明",
     "description": "设置页章节标题"
   },
-  "optionsWhatItDoesBody": {
-    "message": "SourceD 会监听页面中的 JavaScript 请求，定位 <code>sourceMappingURL</code>，仅保留带有 <code>sourcesContent</code> 的有效 source map，并在弹窗中提供源码树下载。",
-    "description": "设置页章节内容"
+  "optionsWhatItDoesBodyPrefix": {
+    "message": "SourceD 会监听页面中的 JavaScript 请求，定位",
+    "description": "设置页章节内容前缀"
+  },
+  "optionsWhatItDoesBodyMiddle": {
+    "message": "仅保留带有",
+    "description": "设置页章节内容中段"
+  },
+  "optionsWhatItDoesBodySuffix": {
+    "message": "的有效 source map，并在弹窗中提供源码树下载。",
+    "description": "设置页章节内容后缀"
   },
   "optionsPermissionsTitle": {
     "message": "权限说明",
     "description": "设置页章节标题"
   },
-  "optionsPermissionWebRequest": {
-    "message": "<code>webRequest</code>：用于识别可能引用 source map 的 JavaScript 文件",
+  "optionsPermissionWebRequestBody": {
+    "message": "用于识别可能引用 source map 的 JavaScript 文件",
     "description": "权限说明"
   },
-  "optionsPermissionDownloads": {
-    "message": "<code>downloads</code>：用于保存还原后的源码压缩包",
+  "optionsPermissionDownloadsBody": {
+    "message": "用于保存还原后的源码压缩包",
     "description": "权限说明"
   },
-  "optionsPermissionTabs": {
-    "message": "<code>tabs</code>：用于将检测结果关联到当前页面",
+  "optionsPermissionTabsBody": {
+    "message": "用于将检测结果关联到当前页面",
     "description": "权限说明"
   },
-  "optionsPermissionStorage": {
-    "message": "<code>storage</code>：用于在本地保存 map 元数据",
+  "optionsPermissionStorageBody": {
+    "message": "用于在本地保存 map 元数据",
     "description": "权限说明"
   },
-  "optionsPermissionHosts": {
-    "message": "<code>&lt;all_urls&gt;</code>：因为 source map 可能托管在任意域名下",
+  "optionsPermissionHostsBody": {
+    "message": "因为 source map 可能托管在任意域名下",
     "description": "权限说明"
   },
   "optionsPrivacyTitle": {
@@ -306,6 +314,10 @@
   "dashboardSaved": {
     "message": "已保存",
     "description": "保存完成状态"
+  },
+  "dashboardSaveFailed": {
+    "message": "保存设置失败",
+    "description": "保存失败状态"
   },
   "dashboardLoading": {
     "message": "加载中…",

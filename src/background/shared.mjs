@@ -21,6 +21,8 @@ export const state = {
   versionsByPage: {},
   blobIndex: {},
   settings: null,
+  pendingSourceMapFetches: new Set(),
+  storageCompactionInProgress: false,
 };
 
 export function setBadgeText(num, tabId) {

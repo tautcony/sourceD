@@ -29,11 +29,11 @@ export default function OptionsApp() {
   }, []);
 
   const permissions = [
-    i18nMessage("optionsPermissionWebRequest"),
-    i18nMessage("optionsPermissionDownloads"),
-    i18nMessage("optionsPermissionTabs"),
-    i18nMessage("optionsPermissionStorage"),
-    i18nMessage("optionsPermissionHosts"),
+    { code: "webRequest", bodyKey: "optionsPermissionWebRequestBody" },
+    { code: "downloads", bodyKey: "optionsPermissionDownloadsBody" },
+    { code: "tabs", bodyKey: "optionsPermissionTabsBody" },
+    { code: "storage", bodyKey: "optionsPermissionStorageBody" },
+    { code: "<all_urls>", bodyKey: "optionsPermissionHostsBody" },
   ];
 
   const privacyItems = [
@@ -73,7 +73,15 @@ export default function OptionsApp() {
         {/* What It Does */}
         <Card title={i18nMessage("optionsWhatItDoesTitle")} size="small">
           <Paragraph>
-            <span dangerouslySetInnerHTML={{ __html: i18nMessage("optionsWhatItDoesBody") }} />
+            {i18nMessage("optionsWhatItDoesBodyPrefix")}
+            {" "}
+            <code>sourceMappingURL</code>
+            {" "}
+            {i18nMessage("optionsWhatItDoesBodyMiddle")}
+            {" "}
+            <code>sourcesContent</code>
+            {" "}
+            {i18nMessage("optionsWhatItDoesBodySuffix")}
           </Paragraph>
         </Card>
 
@@ -82,7 +90,9 @@ export default function OptionsApp() {
           <ul style={{ listStyle: "disc", paddingLeft: 20 }}>
             {permissions.map((item, i) => (
               <li key={i} style={{ marginBottom: 8 }}>
-                <span dangerouslySetInnerHTML={{ __html: item }} />
+                <code>{item.code}</code>
+                {" "}
+                {i18nMessage(item.bodyKey)}
               </li>
             ))}
           </ul>

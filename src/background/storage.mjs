@@ -38,7 +38,14 @@ export function getDb() {
       }
     };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => {
+      state.dbPromise = null;
+      reject(req.error);
+    };
+    req.onblocked = () => {
+      state.dbPromise = null;
+      reject(new Error("indexedDB open blocked"));
+    };
   });
   return state.dbPromise;
 }
@@ -710,6 +717,7 @@ export function buildCompactedStorageState(db, metas) {
 }
 
 export function compactStorageData() {
+  state.storageCompactionInProgress = true;
   return ensureStorageReady().then((db) => listAllVersionsRaw(db).then((metas) => {
     const beforeVersionCount = metas.length;
     const beforeMapCount = Object.keys(state.blobIndex).length;
@@ -763,7 +771,9 @@ export function compactStorageData() {
         },
       };
     }));
-  }));
+  })).finally(() => {
+    state.storageCompactionInProgress = false;
+  });
 }
 
 export function clearSessionsForPage(pageUrl) {

@@ -24,12 +24,15 @@ describe("OptionsApp", () => {
   });
 
   it("renders section cards", () => {
-    render(<OptionsApp />);
+    const { container } = render(<OptionsApp />);
     expect(screen.getByText("What It Does")).toBeInTheDocument();
     expect(screen.getByText("Permissions")).toBeInTheDocument();
     expect(screen.getByText("Privacy")).toBeInTheDocument();
     expect(screen.getByText("Responsible Use")).toBeInTheDocument();
     expect(screen.getByText("History Dashboard")).toBeInTheDocument();
+    expect(container.querySelectorAll("code")).toHaveLength(7);
+    expect(screen.getByText("sourceMappingURL")).toBeInTheDocument();
+    expect(screen.getByText("sourcesContent")).toBeInTheDocument();
   });
 
   it("renders dashboard button", () => {
