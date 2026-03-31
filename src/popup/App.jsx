@@ -28,16 +28,17 @@ function buildMapTree(files) {
   return root;
 }
 
-function toAntdTreeData(node) {
+function toAntdTreeData(node, pathPrefix = "") {
   const children = [];
   const folderNames = Object.keys(node.folders).sort();
   for (const name of folderNames) {
     const folder = node.folders[name];
+    const folderPath = pathPrefix + name + "/";
     children.push({
       title: name,
-      key: "folder-" + name + "-" + Math.random().toString(36).slice(2, 8),
+      key: "folder-" + folderPath,
       icon: <FolderOutlined />,
-      children: toAntdTreeData(folder),
+      children: toAntdTreeData(folder, folderPath),
     });
   }
   const sortedFiles = [...node.files].sort((a, b) => a.name.localeCompare(b.name));

@@ -63,17 +63,19 @@ The repo uses npm for dependency management. Runtime browser assets are generate
 Project layout:
 
 - `manifest.json`: extension manifest
-- `src/background/index.js`: source map discovery, persistence, popup messaging
-- `scripts/build-vendor.mjs`: generate browser vendor assets
+- `src/background/index.js`: source map discovery, persistence, badge state, and extension messaging
+- `src/popup/App.jsx`: popup UI
+- `src/popup/entry.jsx`: popup bundle entry
+- `src/popup/sourcemap.mjs`: source map extraction and download helpers
+- `src/dashboard/App.jsx`: history dashboard UI and interactions
+- `src/dashboard/entry.jsx`: dashboard bundle entry
+- `src/options/App.jsx`: options/about page UI
+- `src/options/entry.jsx`: options bundle entry
+- `src/shared/utils.mjs`: shared UI and path/formatting helpers
+- `scripts/build-vendor.mjs`: vendor build step
 - `scripts/build-dist.mjs`: assemble release files into `dist/`
 - `scripts/package-release.mjs`: zip `dist/` into `releases/`
-- `src/popup/*`: popup UI and download logic
-- `src/dashboard/index.js`: history dashboard UI and interactions
-- `src/options/index.js`: options/about page logic
-- `src/shared/utils.js`: shared UI and formatting helpers
-- `options.html`: about, permissions, and privacy page
-- `styles/main.css`: popup and options page styles
-- `vendor/`: generated browser runtime assets
+- `bundles/`: esbuild output for popup/dashboard/options
 - `_locales/en/messages.json`: extension name and description
 
 ## Third-Party Dependencies

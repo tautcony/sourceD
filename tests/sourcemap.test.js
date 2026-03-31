@@ -214,6 +214,20 @@ describe("extractSourceFiles", () => {
     expect(result).toHaveLength(1);
     expect(result[0].path).toContain("node_modules/lodash/lodash.js");
   });
+
+  it("keeps unnamed as a valid normalized path and only logs filename sanitization warning", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Source file name that becomes empty after sanitization (only special chars)
+    const content = makeSourceMap(["..."], ["content"]);
+    const files = [{ url: "map.js.map", content }];
+    const result = extractSourceFiles(files);
+    // "..." → sanitizeFilename strips dots → "unnamed"
+    expect(result.some((r) => r.path === "unnamed")).toBe(true);
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining("sanitizeFilename: input became empty after sanitization"),
+    );
+    spy.mockRestore();
+  });
 });
 
 describe("versionZipBaseName", () => {
@@ -419,5 +433,57 @@ describe("downloadGroup", () => {
     // Both sources are present since null becomes "null" string
     expect(result).toHaveLength(2);
     expect(result[1].path).toBe("src/valid.js");
+  });
+
+  it("extractSourceFiles deduplicates source files shared across multiple maps", () => {
+    const map1 = JSON.stringify({
+      version: 3, file: "a.js",
+      sources: ["src/shared.js", "src/a-only.js"],
+      sourcesContent: ["shared content", "a only"],
+      mappings: "AAAA", names: [],
+    });
+    const map2 = JSON.stringify({
+      version: 3, file: "b.js",
+      sources: ["src/shared.js", "src/b-only.js"],
+      sourcesContent: ["shared content v2", "b only"],
+      mappings: "AAAA", names: [],
+    });
+    const files = [
+      { url: "a.js.map", content: map1 },
+      { url: "b.js.map", content: map2 },
+    ];
+    const result = extractSourceFiles(files);
+    // shared.js should appear only once (from map1, first seen wins)
+    const sharedEntries = result.filter((r) => r.path === "src/shared.js");
+    expect(sharedEntries).toHaveLength(1);
+    expect(sharedEntries[0].content).toBe("shared content");
+    // unique files should still appear
+    expect(result.find((r) => r.path === "src/a-only.js")).toBeTruthy();
+    expect(result.find((r) => r.path === "src/b-only.js")).toBeTruthy();
+    expect(result).toHaveLength(3);
+  });
+
+  it("downloadGroup deduplicates source files shared across multiple maps", async () => {
+    const map1 = JSON.stringify({
+      version: 3, file: "x.js",
+      sources: ["src/common.js", "src/x.js"],
+      sourcesContent: ["common code", "x code"],
+      mappings: "AAAA", names: [],
+    });
+    const map2 = JSON.stringify({
+      version: 3, file: "y.js",
+      sources: ["src/common.js", "src/y.js"],
+      sourcesContent: ["common code v2", "y code"],
+      mappings: "AAAA", names: [],
+    });
+    const files = [
+      { url: "x.js.map", content: map1, page: { url: "https://example.com" } },
+      { url: "y.js.map", content: map2, page: { url: "https://example.com" } },
+    ];
+    await downloadGroup(files, null, "dedup");
+    expect(chrome.downloads.download).toHaveBeenCalledWith(
+      expect.objectContaining({ filename: "dedup.zip" }),
+      expect.any(Function),
+    );
   });
 });

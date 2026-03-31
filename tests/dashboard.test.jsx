@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, within, fireEvent, waitFor, act } from "@testing-library/react";
+import { App as AntdApp } from "antd";
 import DashboardApp from "../src/dashboard/App.jsx";
+
+const messageApi = {
+  success: vi.fn(),
+  info: vi.fn(),
+  error: vi.fn(),
+};
+
+vi.spyOn(AntdApp, "useApp").mockImplementation(() => ({ message: messageApi }));
 
 // Minimal valid source map with embedded sources
 function makeSourceMap(sources, sourcesContent) {
@@ -71,6 +80,9 @@ class MockFileReader {
 beforeEach(() => {
   globalThis.FileReader = MockFileReader;
   chrome.downloads.download = vi.fn((opts, cb) => { if (cb) cb(1); });
+  messageApi.success.mockReset();
+  messageApi.info.mockReset();
+  messageApi.error.mockReset();
 });
 
 describe("DashboardApp", () => {
@@ -213,7 +225,9 @@ describe("DashboardApp", () => {
     await screen.findByText((content) => content.includes(longSiteKey));
     const cleanBtn = screen.getByText("Clean up").closest("button");
     fireEvent.click(cleanBtn);
-    await screen.findByText("No invalid data found");
+    await waitFor(() => {
+      expect(messageApi.info).toHaveBeenCalledWith("No invalid data found");
+    });
   });
 
   it("handles cleanup with items cleaned", async () => {
@@ -230,7 +244,11 @@ describe("DashboardApp", () => {
     await screen.findByText("No history yet.");
     const cleanBtn = screen.getByText("Clean up").closest("button");
     fireEvent.click(cleanBtn);
-    await screen.findByText(/Cleaned 1 invalid/);
+    await waitFor(() => {
+      expect(messageApi.success).toHaveBeenCalledWith(
+        expect.objectContaining({ content: "Cleaned 1 invalid version(s)" }),
+      );
+    });
   });
 
   it("renders multiple distribution cards", async () => {
@@ -873,5 +891,44 @@ describe("DashboardApp", () => {
 
     // Both files should render under the same host folder (folder-exists branch covered)
     await waitFor(() => screen.getByText(/2 files/));
+  });
+
+  it("deduplicates shared source files in preview drawer", async () => {
+    // Two source maps that share src/shared.js
+    const map1 = makeSourceMap(["src/shared.js", "src/a.js"], ["shared code", "a code"]);
+    const map2 = makeSourceMap(["src/shared.js", "src/b.js"], ["shared code v2", "b code"]);
+    mockDashboardData({
+      pages: mockPages,
+      distribution: mockDistribution,
+      totalVersions: 1,
+      totalStorageBytes: 2048,
+      versionFiles: [
+        { url: "https://example.com/a.js.map", content: map1 },
+        { url: "https://example.com/b.js.map", content: map2 },
+      ],
+    });
+    render(<DashboardApp />);
+    const siteKeyTexts = await screen.findAllByText((c) => c.includes(longSiteKey));
+
+    // Expand to version panel - click the first match (history collapse, not distribution card)
+    fireEvent.click(siteKeyTexts[0].closest(".ant-collapse-header"));
+    await waitFor(() => screen.getByText((c) => c.includes("Example App")));
+    fireEvent.click(screen.getByText((c) => c.includes("Example App")).closest(".ant-collapse-header"));
+    await waitFor(() => screen.getByText((c) => c.includes("v1.0.0-beta")));
+    fireEvent.click(screen.getByText((c) => c.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await waitFor(() => screen.getByText(/2 files/));
+
+    // Click preview button
+    const previewBtn = await screen.findByText("Preview Sources");
+    fireEvent.click(previewBtn);
+
+    // In the preview drawer, shared.js should appear only once (deduped)
+    await waitFor(() => {
+      const sharedEntries = screen.getAllByText("shared.js");
+      expect(sharedEntries).toHaveLength(1);
+    });
+    // a.js and b.js should each appear once
+    expect(screen.getAllByText("a.js")).toHaveLength(1);
+    expect(screen.getAllByText("b.js")).toHaveLength(1);
   });
 });

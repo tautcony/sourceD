@@ -13,11 +13,17 @@ export function uiLocale() {
 }
 
 export function sanitizeFilename(filename) {
-  if (!filename) return "unnamed";
+  if (!filename) {
+    // console.warn("[SourceD] sanitizeFilename: received empty input, using 'unnamed'", filename);
+    return "unnamed";
+  }
   filename = filename.replace(/[<>:"/\\|?*]/g, "_");
   filename = filename.replace(/[\x00-\x1f\x80-\x9f]/g, "");
   filename = filename.replace(/^[\s.]+|[\s.]+$/g, "");
-  if (!filename) return "unnamed";
+  if (!filename) {
+    // console.warn("[SourceD] sanitizeFilename: input became empty after sanitization, using 'unnamed'");
+    return "unnamed";
+  }
   if (filename.length > 200) {
     var ext = filename.lastIndexOf(".");
     return ext > 0
@@ -28,10 +34,23 @@ export function sanitizeFilename(filename) {
 }
 
 export function sanitizePath(path) {
-  if (!path) return "unnamed";
-  var parts = path.split("/")
-    .map(sanitizeFilename)
-    .filter(function (p) { return p && p !== "." && p !== ".."; });
+  if (!path) {
+    console.warn("[SourceD] sanitizePath: received empty input, using 'unnamed'", path);
+    return "unnamed";
+  }
+  var parts = [];
+
+  path.split("/").forEach(function (part) {
+    if (!part || part === ".") return;
+    if (part === "..") {
+      if (parts.length > 0) parts.pop();
+      return;
+    }
+
+    var sanitized = sanitizeFilename(part);
+    if (sanitized) parts.push(sanitized);
+  });
+
   /* c8 ignore next */
   return parts.join("/") || "unnamed";
 }

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Button, Space, Typography, Tree, Empty, Spin, Flex, ConfigProvider,
-  Card, Collapse, Statistic, Form, InputNumber, Switch, Tag, message, Drawer,
+  Card, Collapse, Statistic, Form, InputNumber, Switch, Tag, App, Drawer,
 } from "antd";
 import {
   ReloadOutlined, DownloadOutlined, DeleteOutlined,
@@ -91,15 +91,16 @@ function buildMapTree(files) {
   return root;
 }
 
-function toAntdTreeData(node) {
+function toAntdTreeData(node, pathPrefix = "") {
   const children = [];
   for (const name of Object.keys(node.folders).sort()) {
     const folder = node.folders[name];
+    const folderPath = pathPrefix + name + "/";
     children.push({
       title: name,
-      key: "folder-" + name + "-" + Math.random().toString(36).slice(2, 8),
+      key: "folder-" + folderPath,
       icon: <FolderOutlined />,
-      children: toAntdTreeData(folder),
+      children: toAntdTreeData(folder, folderPath),
     });
   }
   for (const file of [...node.files].sort((a, b) => a.name.localeCompare(b.name))) {
@@ -136,15 +137,16 @@ function buildSourceTree(sourceFiles) {
   return root;
 }
 
-function toSourceTreeData(node) {
+function toSourceTreeData(node, pathPrefix = "") {
   const children = [];
   for (const name of Object.keys(node.folders).sort()) {
     const folder = node.folders[name];
+    const folderPath = pathPrefix + name + "/";
     children.push({
       title: name,
-      key: "sfolder-" + name + "-" + Math.random().toString(36).slice(2, 8),
+      key: "sfolder-" + folderPath,
       icon: <FolderOutlined />,
-      children: toSourceTreeData(folder),
+      children: toSourceTreeData(folder, folderPath),
       selectable: false,
     });
   }
@@ -255,6 +257,11 @@ function VersionPanel({ version, onReload }) {
     return () => { setPreviewOpen(false); };
   }, []);
 
+  const treeData = useMemo(() => {
+    if (!files?.length) return [];
+    return toAntdTreeData(buildMapTree(files));
+  }, [files]);
+
   if (loadingFiles) {
     return <Spin size="small" style={{ padding: 16 }} />;
   }
@@ -262,8 +269,6 @@ function VersionPanel({ version, onReload }) {
   if (!files || !files.length) {
     return <Empty description={i18nMessage("dashboardEmptyVersionFiles")} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
-
-  const treeData = toAntdTreeData(buildMapTree(files));
 
   return (
     <Flex vertical gap={8} style={{ padding: "8px 0" }}>
@@ -290,7 +295,7 @@ function VersionPanel({ version, onReload }) {
         open={previewOpen}
         onClose={() => { setPreviewOpen(false); setSelectedFile(null); }}
         destroyOnClose
-        width="70vw"
+        size="70vw"
         styles={{ body: { padding: 0, display: "flex", flexDirection: "column", overflow: "hidden" } }}
       >
         {sourceFiles && sourceFiles.length > 0 ? (
@@ -335,6 +340,7 @@ function VersionPanel({ version, onReload }) {
 function SettingsSection({ settings, onReload }) {
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const { message } = App.useApp();
 
   useEffect(() => {
     if (settings) {
@@ -385,6 +391,7 @@ function SettingsSection({ settings, onReload }) {
 // ─── Main Dashboard App ─────────────────────────────────────────────────────────
 
 export default function DashboardApp() {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(true);
   const [pages, setPages] = useState([]);
   const [distribution, setDistribution] = useState([]);
@@ -502,15 +509,16 @@ export default function DashboardApp() {
   }, [groups, loadData]);
 
   return (
-    <ConfigProvider theme={{ token: { fontSize: 13 } }}>
-      <style>{`
-        .ant-collapse-header { overflow: hidden; }
-        .ant-collapse-header-text { overflow: hidden; min-width: 0; flex: 1; }
-        .ant-tree-node-content-wrapper { display: inline-flex !important; align-items: center; flex-wrap: nowrap; min-width: 0; max-width: 100%; }
-        .ant-tree-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-        .ant-tree .ant-tree-treenode { white-space: nowrap; }
-      `}</style>
-      <Flex vertical gap={24} style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
+    <App>
+      <ConfigProvider theme={{ token: { fontSize: 13 } }}>
+        <style>{`
+          .ant-collapse-header { overflow: hidden; }
+          .ant-collapse-header-text { overflow: hidden; min-width: 0; flex: 1; }
+          .ant-tree-node-content-wrapper { display: inline-flex !important; align-items: center; flex-wrap: nowrap; min-width: 0; max-width: 100%; }
+          .ant-tree-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+          .ant-tree .ant-tree-treenode { white-space: nowrap; }
+        `}</style>
+        <Flex vertical gap={24} style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
         {/* Hero */}
         <Flex justify="space-between" align="flex-start">
           <Flex vertical gap={4}>
@@ -592,5 +600,6 @@ export default function DashboardApp() {
         </Card>
       </Flex>
     </ConfigProvider>
+    </App>
   );
 }

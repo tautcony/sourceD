@@ -195,4 +195,33 @@ describe("branch coverage helpers", () => {
     // Second element should be sanitizeFilename("myhost")
     expect(result[1]).toBe("myhost");
   });
+
+  it("sanitizeFilename logs a warning when input is empty", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    sanitizeFilename(null);
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining("sanitizeFilename: received empty input"),
+      null,
+    );
+    spy.mockRestore();
+  });
+
+  it("sanitizeFilename logs a warning when input becomes empty after sanitization", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    sanitizeFilename("...");
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining("sanitizeFilename: input became empty after sanitization"),
+    );
+    spy.mockRestore();
+  });
+
+  it("sanitizePath logs a warning when input is empty", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    sanitizePath(null);
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining("sanitizePath: received empty input"),
+      null,
+    );
+    spy.mockRestore();
+  });
 });

@@ -24,15 +24,14 @@ function normalizeSourcePath(fileName) {
   /* c8 ignore next */
   if (!fileName) return null;
 
+  var result;
   if (fileName.startsWith("webpack://")) {
     fileName = fileName.replace(/^webpack:\/\/[^/]*\//, "");
     fileName = fileName.replace(/^webpack:\/\//, "");
     fileName = fileName.replace(/^\/+/, "");
     fileName = fileName.replace(/^~\//, "node_modules/");
-    return sanitizePath(fileName);
-  }
-
-  if (fileName.startsWith("/@fs/")) {
+    result = sanitizePath(fileName);
+  } else if (fileName.startsWith("/@fs/")) {
     var fsPath = fileName.slice(5);
     var knownDir = /\/(src|lib|app|components|pages|views|utils|stores?|router|assets|styles?|api|hooks|composables|types?)\//;
     var m = fsPath.match(knownDir);
@@ -41,11 +40,13 @@ function normalizeSourcePath(fileName) {
     } else {
       fileName = fsPath.replace(/^(?:[/\\][^/\\]+){1,4}[/\\]/, "");
     }
-    return sanitizePath(fileName);
+    result = sanitizePath(fileName);
+  } else {
+    fileName = fileName.replace(/^\/+/, "").replace(/^\.\//, "");
+    result = sanitizePath(fileName);
   }
 
-  fileName = fileName.replace(/^\/+/, "").replace(/^\.\//, "");
-  return sanitizePath(fileName);
+  return result;
 }
 
 // ─── ZIP helpers ──────────────────────────────────────────────────────────────
@@ -106,6 +107,7 @@ export function versionZipBaseName(files, version) {
 function appendFilesToZip(zip, files, contentMap, pathPrefix) {
   var errors = [];
   var added = 0;
+  var seen = {};
 
   for (var i = 0; i < files.length; i++) {
     var consumer;
@@ -122,7 +124,10 @@ function appendFilesToZip(zip, files, contentMap, pathPrefix) {
         var dest = normalizeSourcePath(src);
         /* c8 ignore next */
         if (!dest) return;
-        addZipFile(zip, prefixedPath(pathPrefix, dest), content);
+        var fullPath = prefixedPath(pathPrefix, dest);
+        if (seen[fullPath]) return;
+        seen[fullPath] = true;
+        addZipFile(zip, fullPath, content);
         added++;
       });
     } catch (e) {
@@ -139,6 +144,7 @@ function appendFilesToZip(zip, files, contentMap, pathPrefix) {
 // ─── Single file download ─────────────────────────────────────────────────────
 
 export function extractSourceFiles(files) {
+  var seen = {};
   var result = [];
   for (var i = 0; i < files.length; i++) {
     var consumer;
@@ -153,6 +159,8 @@ export function extractSourceFiles(files) {
         var dest = normalizeSourcePath(src);
         /* c8 ignore next */
         if (!dest) return;
+        if (seen[dest]) return;
+        seen[dest] = true;
         result.push({ path: dest, content: content });
       });
     } catch (e) {
