@@ -21,6 +21,11 @@ await mkdir(BUNDLES_DIR, { recursive: true });
 await Promise.all([
   build({
     ...commonOptions,
+    entryPoints: ["src/background/index.js"],
+    outfile: `${BUNDLES_DIR}/background.js`,
+  }),
+  build({
+    ...commonOptions,
     entryPoints: ["src/popup/entry.jsx"],
     outfile: `${BUNDLES_DIR}/popup.js`,
   }),
@@ -41,7 +46,6 @@ const COPY_TARGETS = [
   "_locales",
   "images",
   "bundles",
-  "src/background",
   "manifest.json",
   "dashboard.html",
   "options.html",
