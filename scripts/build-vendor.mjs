@@ -1,4 +1,4 @@
-import { mkdir, copyFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 
 // Vendor scripts are no longer needed for page bundles.
 // React, ReactDOM, JSZip, source-map-js, and antd are all bundled

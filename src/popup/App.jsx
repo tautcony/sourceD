@@ -1,6 +1,4 @@
-/* global chrome */
-
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button, Space, Typography, Tree, Empty, Spin, Flex, ConfigProvider, theme } from "antd";
 import { DownloadOutlined, HistoryOutlined, DeleteOutlined, FolderOutlined, FileOutlined } from "@ant-design/icons";
 import { i18nMessage, fileSizeIEC, parseFileName, sourceMapTreePath, sanitizeFilename } from "../shared/utils.mjs";

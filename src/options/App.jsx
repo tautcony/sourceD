@@ -1,6 +1,4 @@
-/* global chrome */
-
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Button, Typography, Card, Statistic, Flex, ConfigProvider,
 } from "antd";

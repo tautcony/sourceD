@@ -1,6 +1,4 @@
-// ESM version of sourcemap.js for import in JSX components
-
-/* global chrome */
+// Source map helpers for the bundled React UI.
 
 import JSZip from "jszip";
 import { SourceMapConsumer } from "source-map-js";
@@ -163,7 +161,7 @@ export function extractSourceFiles(files) {
         seen[dest] = true;
         result.push({ path: dest, content: content });
       });
-    } catch (e) {
+    } catch {
       // skip invalid source maps
     } finally {
       /* c8 ignore next */

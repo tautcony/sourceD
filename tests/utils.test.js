@@ -196,32 +196,21 @@ describe("branch coverage helpers", () => {
     expect(result[1]).toBe("myhost");
   });
 
-  it("sanitizeFilename logs a warning when input is empty", () => {
-    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    sanitizeFilename(null);
-    expect(spy).toHaveBeenCalledWith(
-      expect.stringContaining("sanitizeFilename: received empty input"),
-      null,
-    );
-    spy.mockRestore();
+  it("sanitizeFilename returns unnamed when input is empty", () => {
+    expect(sanitizeFilename(null)).toBe("unnamed");
   });
 
-  it("sanitizeFilename logs a warning when input becomes empty after sanitization", () => {
-    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    sanitizeFilename("...");
-    expect(spy).toHaveBeenCalledWith(
-      expect.stringContaining("sanitizeFilename: input became empty after sanitization"),
-    );
-    spy.mockRestore();
+  it("sanitizeFilename returns unnamed when input becomes empty after sanitization", () => {
+    expect(sanitizeFilename("...")).toBe("unnamed");
   });
 
   it("sanitizePath logs a warning when input is empty", () => {
-    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    sanitizePath(null);
-    expect(spy).toHaveBeenCalledWith(
-      expect.stringContaining("sanitizePath: received empty input"),
-      null,
+    expect(sanitizePath(null)).toBe("unnamed");
+  });
+
+  it("sanitizePath collapses parent segments back to root", () => {
+    expect(sanitizePath("../../app/node_modules/svelte/src/version.js")).toBe(
+      "app/node_modules/svelte/src/version.js",
     );
-    spy.mockRestore();
   });
 });

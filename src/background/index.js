@@ -76,7 +76,7 @@ function canonicalPageUrl(url) {
     var parsed = new URL(url);
     parsed.hash = "";
     return parsed.toString();
-  } catch (_) {
+  } catch {
     return url || "";
   }
 }
@@ -85,7 +85,7 @@ function pageSiteKey(url) {
   try {
     var parsed = new URL(url);
     return parsed.origin;
-  } catch (_) {
+  } catch {
     return url || "";
   }
 }
@@ -391,7 +391,7 @@ function pushSummary(port) {
 
 function broadcastSummary() {
   popupPorts.forEach(function (port) {
-    try { pushSummary(port); } catch (_) {}
+    try { pushSummary(port); } catch { /* ignore disconnected popup ports */ }
   });
 }
 
@@ -587,7 +587,7 @@ function isValidSourceMap(raw) {
       Array.isArray(data.sourcesContent) &&
       data.sourcesContent.some(function (c) { return c != null && c !== ""; })
     );
-  } catch (_) { return false; }
+  } catch { return false; }
 }
 
 chrome.tabs.onRemoved.addListener(function (tabId) {
@@ -762,8 +762,8 @@ chrome.runtime.onMessage.addListener(function (message, _sender, sendResponse) {
   }
 
   if (message.action === "deletePageHistory") {
-    var pageUrl = canonicalPageUrl(message.pageUrl || "");
-    deletePageHistory(pageUrl).then(function () {
+    var targetPageUrl = canonicalPageUrl(message.pageUrl || "");
+    deletePageHistory(targetPageUrl).then(function () {
       broadcastSummary();
       sendResponse({ ok: true });
     });

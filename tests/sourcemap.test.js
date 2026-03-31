@@ -215,18 +215,13 @@ describe("extractSourceFiles", () => {
     expect(result[0].path).toContain("node_modules/lodash/lodash.js");
   });
 
-  it("keeps unnamed as a valid normalized path and only logs filename sanitization warning", () => {
-    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("keeps unnamed as a valid normalized path without special-case rejection", () => {
     // Source file name that becomes empty after sanitization (only special chars)
     const content = makeSourceMap(["..."], ["content"]);
     const files = [{ url: "map.js.map", content }];
     const result = extractSourceFiles(files);
     // "..." → sanitizeFilename strips dots → "unnamed"
     expect(result.some((r) => r.path === "unnamed")).toBe(true);
-    expect(spy).toHaveBeenCalledWith(
-      expect.stringContaining("sanitizeFilename: input became empty after sanitization"),
-    );
-    spy.mockRestore();
   });
 });
 

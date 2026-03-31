@@ -1,6 +1,4 @@
-/* global chrome */
-
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Button, Space, Typography, Tree, Empty, Spin, Flex, ConfigProvider,
   Card, Collapse, Statistic, Form, InputNumber, Switch, Tag, App, Drawer,
@@ -17,7 +15,7 @@ import css from "highlight.js/lib/languages/css";
 import xml from "highlight.js/lib/languages/xml";
 import json from "highlight.js/lib/languages/json";
 import "highlight.js/styles/github.css";
-import { i18nMessage, fileSizeIEC, parseFileName, sourceMapTreePath, sanitizeFilename, uiLocale } from "../shared/utils.mjs";
+import { i18nMessage, fileSizeIEC, sourceMapTreePath, uiLocale } from "../shared/utils.mjs";
 import { downloadGroup, versionZipBaseName, extractSourceFiles } from "../popup/sourcemap.mjs";
 
 hljs.registerLanguage("javascript", javascript);
@@ -26,7 +24,7 @@ hljs.registerLanguage("css", css);
 hljs.registerLanguage("xml", xml);
 hljs.registerLanguage("json", json);
 
-const { Title, Text, Link: AntLink } = Typography;
+const { Title, Text } = Typography;
 
 function guessLanguage(filename) {
   const ext = filename.split(".").pop()?.toLowerCase();
@@ -366,7 +364,7 @@ function SettingsSection({ settings, onReload }) {
       message.success(i18nMessage("dashboardSaved"));
       onReload();
     });
-  }, [onReload]);
+  }, [message, onReload]);
 
   return (
     <Form form={form} layout="vertical" onFinish={handleSave} style={{ maxWidth: 400 }}>
@@ -416,7 +414,7 @@ export default function DashboardApp() {
     document.documentElement.lang = /^zh\b/i.test(locale) ? "zh-CN" : "en";
     document.title = i18nMessage("dashboardPageTitle");
     loadData();
-  }, [loadData]);
+  }, [loadData, message]);
 
   const [cleaning, setCleaning] = useState(false);
   const handleCleanup = useCallback(() => {
@@ -435,7 +433,7 @@ export default function DashboardApp() {
         message.info(i18nMessage("dashboardCleanupNone"));
       }
     });
-  }, [loadData]);
+  }, [loadData, message]);
 
   const groups = useMemo(() => groupPagesByDomain(pages), [pages]);
 

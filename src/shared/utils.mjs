@@ -1,6 +1,4 @@
-// ESM version of utils.js for import in JSX components
-
-/* global chrome */
+// Shared helpers for the bundled React UI.
 
 export function i18nMessage(key, substitutions) {
   var message = chrome.i18n.getMessage(key, substitutions);
@@ -92,7 +90,7 @@ export function sourceMapTreePath(url) {
     }
 
     return parts.map(sanitizeFilename);
-  } catch (_) {
+  } catch {
     return sanitizePath(url).split("/").filter(function (part) { return !!part; });
   }
 }
