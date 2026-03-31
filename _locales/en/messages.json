@@ -251,6 +251,10 @@
     "message": "Refresh",
     "description": "Dashboard refresh button"
   },
+  "dashboardImportAction": {
+    "message": "Import Maps",
+    "description": "Dashboard import maps button"
+  },
   "dashboardTotalPages": {
     "message": "Tracked Pages",
     "description": "Dashboard metric"
@@ -378,6 +382,54 @@
   "dashboardPreviewEmpty": {
     "message": "No recoverable source files found.",
     "description": "Dashboard source preview empty state"
+  },
+  "dashboardImportTitle": {
+    "message": "Import Source Maps",
+    "description": "Dashboard import modal title"
+  },
+  "dashboardImportHelp": {
+    "message": "Attach one or more source map files and assign them to a page URL. Existing versions with the same file hashes will be reused.",
+    "description": "Dashboard import modal help text"
+  },
+  "dashboardImportUrlLabel": {
+    "message": "Page URL",
+    "description": "Dashboard import URL field label"
+  },
+  "dashboardImportUrlPlaceholder": {
+    "message": "https://example.com/app",
+    "description": "Dashboard import URL placeholder"
+  },
+  "dashboardImportPageTitleLabel": {
+    "message": "Page Title",
+    "description": "Dashboard import page title field label"
+  },
+  "dashboardImportTitlePlaceholder": {
+    "message": "Optional page title",
+    "description": "Dashboard import title placeholder"
+  },
+  "dashboardImportFileLabel": {
+    "message": "Source map files",
+    "description": "Dashboard import file input label"
+  },
+  "dashboardImportEmpty": {
+    "message": "No files selected yet.",
+    "description": "Dashboard import empty file list text"
+  },
+  "dashboardImportConfirm": {
+    "message": "Import",
+    "description": "Dashboard import confirm button"
+  },
+  "dashboardImportResultCreated": {
+    "message": "Imported $1 source map files as a new version",
+    "description": "Dashboard import success message for a new version"
+  },
+  "dashboardImportResultReused": {
+    "message": "Matched an existing version with $1 source map files",
+    "description": "Dashboard import success message for reused version"
+  },
+  "dashboardImportResultRejected": {
+    "message": "$1 files were skipped",
+    "description": "Dashboard import skipped files message"
   },
   "dashboardCleanup": {
     "message": "Optimize Storage",

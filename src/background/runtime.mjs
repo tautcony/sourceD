@@ -15,6 +15,7 @@ import {
   deleteVersions,
   distributionSummary,
   ensureStorageReady,
+  importSourceMapsForPage,
   loadSettings,
   loadVersionFiles,
   prunePageHistory,
@@ -257,6 +258,40 @@ export function registerRuntimeListeners() {
       }).catch((err) => {
         console.error("[SourceD] cleanup failed:", err);
         sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+      });
+      return true;
+    }
+
+    if (message.action === "importSourceMaps") {
+      const rawFiles = Array.isArray(message.files) ? message.files : [];
+      const acceptedFiles = [];
+      const rejectedFiles = [];
+
+      rawFiles.forEach((file) => {
+        const content = typeof file?.content === "string" ? file.content : "";
+        const mapUrl = String(file?.mapUrl || "").trim();
+        if (!mapUrl || !content || !isValidSourceMap(content)) {
+          rejectedFiles.push(mapUrl || file?.name || "unnamed.map");
+          return;
+        }
+        acceptedFiles.push({ mapUrl, content });
+      });
+
+      importSourceMapsForPage({
+        pageUrl: message.pageUrl,
+        title: message.title,
+        files: acceptedFiles,
+      }).then((result) => {
+        broadcastSummary();
+        sendResponse(Object.assign({}, result, {
+          rejectedFiles,
+        }));
+      }).catch((err) => {
+        sendResponse({
+          ok: false,
+          error: err && err.message ? err.message : String(err),
+          rejectedFiles,
+        });
       });
       return true;
     }

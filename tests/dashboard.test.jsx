@@ -184,6 +184,144 @@ describe("DashboardApp", () => {
     expect(screen.getByText("Optimize Storage")).toBeInTheDocument();
   });
 
+  it("imports uploaded source map files from dashboard", async () => {
+    mockDashboardData({ pages: [], totalVersions: 0, totalStorageBytes: 0 }, {
+      importSourceMaps: (msg, cb) => {
+        cb({
+          ok: true,
+          reusedExisting: false,
+          importedCount: 1,
+          rejectedFiles: [],
+        });
+      },
+    });
+
+    render(<DashboardApp />);
+    fireEvent.click(screen.getByText("Import Maps").closest("button"));
+
+    const pageUrlInput = await screen.findByLabelText("Page URL");
+    fireEvent.change(pageUrlInput, { target: { value: "https://example.com/app" } });
+    fireEvent.change(screen.getByLabelText("Page Title"), { target: { value: "Imported Page" } });
+
+    const file = new File(["{}"], "app.js.map", { type: "application/json" });
+    Object.defineProperty(file, "text", {
+      value: vi.fn().mockResolvedValue(makeSourceMap(["src/index.js"], ['console.log("imported");'])),
+    });
+
+    fireEvent.change(screen.getByLabelText("Source map files"), {
+      target: { files: [file] },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "importSourceMaps",
+          pageUrl: "https://example.com/app",
+          title: "Imported Page",
+          files: [
+            expect.objectContaining({
+              name: "app.js.map",
+              mapUrl: "app.js.map",
+            }),
+          ],
+        }),
+        expect.any(Function),
+      );
+    });
+
+    await waitFor(() => {
+      expect(messageApi.success).toHaveBeenCalledWith("Imported 1 source map files as a new version");
+    });
+  });
+
+  it("imports uploaded source map files via FileReader fallback", async () => {
+    const OriginalFileReader = globalThis.FileReader;
+    try {
+      globalThis.FileReader = class {
+        readAsText() {
+          this.result = makeSourceMap(["src/fallback.js"], ['console.log("reader");']);
+          if (this.onload) this.onload();
+        }
+      };
+
+      mockDashboardData({ pages: [], totalVersions: 0, totalStorageBytes: 0 }, {
+        importSourceMaps: (msg, cb) => {
+          cb({ ok: true, reusedExisting: true, importedCount: 1, rejectedFiles: ["bad.map"] });
+        },
+      });
+
+      render(<DashboardApp />);
+      fireEvent.click(screen.getByText("Import Maps").closest("button"));
+
+      fireEvent.change(await screen.findByLabelText("Page URL"), {
+        target: { value: "https://example.com/fallback" },
+      });
+
+      const file = new File(["{}"], "fallback.js.map", { type: "application/json" });
+      Object.defineProperty(file, "text", { value: undefined });
+
+      fireEvent.change(screen.getByLabelText("Source map files"), {
+        target: { files: [file] },
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Import" }));
+
+      await waitFor(() => {
+        expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: "importSourceMaps",
+            pageUrl: "https://example.com/fallback",
+            files: [
+              expect.objectContaining({
+                mapUrl: "fallback.js.map",
+                content: expect.stringContaining("\"version\":3"),
+              }),
+            ],
+          }),
+          expect.any(Function),
+        );
+      });
+
+      await waitFor(() => {
+        expect(messageApi.success).toHaveBeenCalledWith("Matched an existing version with 1 source map files · 1 files were skipped");
+      });
+    } finally {
+      globalThis.FileReader = OriginalFileReader;
+    }
+  });
+
+  it("shows import failure message", async () => {
+    mockDashboardData({ pages: [], totalVersions: 0, totalStorageBytes: 0 }, {
+      importSourceMaps: (_msg, cb) => {
+        cb({ ok: false, error: "import exploded" });
+      },
+    });
+
+    render(<DashboardApp />);
+    fireEvent.click(screen.getByText("Import Maps").closest("button"));
+
+    fireEvent.change(await screen.findByLabelText("Page URL"), {
+      target: { value: "https://example.com/fail" },
+    });
+
+    const file = new File(["{}"], "fail.js.map", { type: "application/json" });
+    Object.defineProperty(file, "text", {
+      value: vi.fn().mockResolvedValue(makeSourceMap(["src/fail.js"], ['console.log("fail");'])),
+    });
+
+    fireEvent.change(screen.getByLabelText("Source map files"), {
+      target: { files: [file] },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+
+    await waitFor(() => {
+      expect(messageApi.error).toHaveBeenCalledWith("import exploded");
+    });
+  });
+
   it("shows summary card values from data", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 5, totalStorageBytes: 1048576 });
     const { container } = render(<DashboardApp />);

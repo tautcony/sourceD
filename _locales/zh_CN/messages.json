@@ -251,6 +251,10 @@
     "message": "刷新",
     "description": "刷新按钮"
   },
+  "dashboardImportAction": {
+    "message": "导入 Map",
+    "description": "导入 map 按钮"
+  },
   "dashboardTotalPages": {
     "message": "跟踪页面数",
     "description": "历史面板指标"
@@ -378,6 +382,54 @@
   "dashboardPreviewEmpty": {
     "message": "未找到可还原的源文件。",
     "description": "源文件预览空状态"
+  },
+  "dashboardImportTitle": {
+    "message": "导入 Source Map",
+    "description": "导入弹窗标题"
+  },
+  "dashboardImportHelp": {
+    "message": "选择一个或多个 source map 文件，并指定归属页面 URL。若同页面下文件哈希完全一致，则会复用现有版本。",
+    "description": "导入弹窗说明"
+  },
+  "dashboardImportUrlLabel": {
+    "message": "页面 URL",
+    "description": "导入 URL 标签"
+  },
+  "dashboardImportUrlPlaceholder": {
+    "message": "https://example.com/app",
+    "description": "导入 URL 占位文案"
+  },
+  "dashboardImportPageTitleLabel": {
+    "message": "页面标题",
+    "description": "导入页面标题标签"
+  },
+  "dashboardImportTitlePlaceholder": {
+    "message": "可选页面标题",
+    "description": "导入标题占位文案"
+  },
+  "dashboardImportFileLabel": {
+    "message": "Source Map 文件",
+    "description": "导入文件标签"
+  },
+  "dashboardImportEmpty": {
+    "message": "还没有选择文件。",
+    "description": "导入文件列表为空"
+  },
+  "dashboardImportConfirm": {
+    "message": "导入",
+    "description": "导入确认按钮"
+  },
+  "dashboardImportResultCreated": {
+    "message": "已导入 $1 个 source map 文件，并创建新版本",
+    "description": "导入成功创建新版本提示"
+  },
+  "dashboardImportResultReused": {
+    "message": "匹配到现有版本，识别了 $1 个 source map 文件",
+    "description": "导入成功复用已有版本提示"
+  },
+  "dashboardImportResultRejected": {
+    "message": "跳过了 $1 个文件",
+    "description": "导入时跳过文件提示"
   },
   "dashboardCleanup": {
     "message": "优化数据存储",

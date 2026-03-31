@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Button, Space, Typography, Tree, Empty, Spin, Flex, ConfigProvider,
-  Card, Collapse, Statistic, Form, InputNumber, Switch, Tag, App, Drawer,
+  Card, Collapse, Statistic, Form, InputNumber, Switch, Tag, App, Drawer, Input, Modal, List,
 } from "antd";
 import {
   ReloadOutlined, DownloadOutlined, DeleteOutlined,
   FolderOutlined, FileOutlined, GlobalOutlined,
-  FileTextOutlined, ClockCircleOutlined, EyeOutlined, ClearOutlined,
+  FileTextOutlined, ClockCircleOutlined, EyeOutlined, ClearOutlined, UploadOutlined,
 } from "@ant-design/icons";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
@@ -378,6 +378,113 @@ function SettingsSection({ settings, onReload }) {
   );
 }
 
+function ImportMapsModal({ open, importing, onCancel, onImport }) {
+  const [pageUrl, setPageUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) {
+      setPageUrl("");
+      setTitle("");
+      setSelectedFiles([]);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }, [open]);
+
+  const handleFileChange = useCallback((event) => {
+    const nextFiles = Array.from(event.target.files || []);
+    setSelectedFiles(nextFiles);
+  }, []);
+
+  const handleSubmit = useCallback(async () => {
+    const trimmedUrl = pageUrl.trim();
+    if (!trimmedUrl || !selectedFiles.length) return;
+
+    const files = await Promise.all(selectedFiles.map(async (file) => {
+      const text = typeof file.text === "function"
+        ? await file.text()
+        : await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result || "");
+          reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
+          reader.readAsText(file);
+        });
+
+      return {
+        name: file.name,
+        mapUrl: file.webkitRelativePath || file.name,
+        content: String(text || ""),
+      };
+    }));
+
+    onImport({
+      pageUrl: trimmedUrl,
+      title: title.trim(),
+      files,
+    });
+  }, [onImport, pageUrl, selectedFiles, title]);
+
+  return (
+    <Modal
+      title={i18nMessage("dashboardImportTitle")}
+      open={open}
+      onCancel={onCancel}
+      onOk={handleSubmit}
+      okText={i18nMessage("dashboardImportConfirm")}
+      okButtonProps={{ disabled: !pageUrl.trim() || !selectedFiles.length, loading: importing }}
+      cancelButtonProps={{ disabled: importing }}
+      destroyOnHidden
+    >
+      <Flex vertical gap={12}>
+        <Text type="secondary">{i18nMessage("dashboardImportHelp")}</Text>
+        <Input
+          value={pageUrl}
+          onChange={(event) => setPageUrl(event.target.value)}
+          placeholder={i18nMessage("dashboardImportUrlPlaceholder")}
+          aria-label={i18nMessage("dashboardImportUrlLabel")}
+        />
+        <Input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder={i18nMessage("dashboardImportTitlePlaceholder")}
+          aria-label={i18nMessage("dashboardImportPageTitleLabel")}
+        />
+        <Flex vertical gap={8}>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept=".map,application/json"
+            onChange={handleFileChange}
+            aria-label={i18nMessage("dashboardImportFileLabel")}
+          />
+          {selectedFiles.length ? (
+            <List
+              size="small"
+              bordered
+              dataSource={selectedFiles}
+              renderItem={(file) => (
+                <List.Item>
+                  <Flex justify="space-between" align="center" style={{ width: "100%", minWidth: 0 }}>
+                    <Text ellipsis={{ tooltip: file.name }} style={{ minWidth: 0 }}>{file.name}</Text>
+                    <Text type="secondary" style={{ marginLeft: 8, flexShrink: 0 }}>{fileSizeIEC(file.size || 0)}</Text>
+                  </Flex>
+                </List.Item>
+              )}
+            />
+          ) : (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {i18nMessage("dashboardImportEmpty")}
+            </Text>
+          )}
+        </Flex>
+      </Flex>
+    </Modal>
+  );
+}
+
 // ─── Main Dashboard App ─────────────────────────────────────────────────────────
 
 function DashboardContent() {
@@ -388,6 +495,8 @@ function DashboardContent() {
   const [settings, setSettings] = useState(null);
   const [totalVersions, setTotalVersions] = useState(0);
   const [totalStorageBytes, setTotalStorageBytes] = useState(0);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -471,6 +580,36 @@ function DashboardContent() {
       loadData();
     });
   }, [loadData, stopHeaderAction]);
+
+  const handleImportMaps = useCallback((payload) => {
+    setImporting(true);
+    chrome.runtime.sendMessage({
+      action: "importSourceMaps",
+      pageUrl: payload.pageUrl,
+      title: payload.title,
+      files: payload.files,
+    }, (resp) => {
+      setImporting(false);
+      if (!resp?.ok) {
+        message.error(resp?.error || "Import failed");
+        return;
+      }
+
+      const rejectedCount = Array.isArray(resp.rejectedFiles) ? resp.rejectedFiles.length : 0;
+      const importedCount = Number(resp.importedCount) || 0;
+      const summary = resp.reusedExisting
+        ? i18nMessage("dashboardImportResultReused", [String(importedCount)])
+        : i18nMessage("dashboardImportResultCreated", [String(importedCount)]);
+
+      const detail = rejectedCount
+        ? `${summary} · ${i18nMessage("dashboardImportResultRejected", [String(rejectedCount)])}`
+        : summary;
+
+      message.success(detail);
+      setImportOpen(false);
+      loadData();
+    });
+  }, [loadData, message]);
 
   const domainCollapseItems = useMemo(() => {
     return groups.map((group) => ({
@@ -592,6 +731,9 @@ function DashboardContent() {
             <Text type="secondary">{i18nMessage("dashboardLead")}</Text>
           </Flex>
           <Space>
+            <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>
+              {i18nMessage("dashboardImportAction")}
+            </Button>
             <Button icon={<ClearOutlined />} onClick={handleCleanup} loading={cleaning}>
               {i18nMessage("dashboardCleanup")}
             </Button>
@@ -663,6 +805,12 @@ function DashboardContent() {
         >
           <SettingsSection settings={settings} onReload={loadData} />
         </Card>
+        <ImportMapsModal
+          open={importOpen}
+          importing={importing}
+          onCancel={() => setImportOpen(false)}
+          onImport={handleImportMaps}
+        />
       </Flex>
       </ConfigProvider>
   );

@@ -11,11 +11,14 @@ import {
   hashString,
   mapStoreKey,
   pageSiteKey,
+  canonicalPageUrl,
   rebuildIndexes,
   refreshBadgeForActiveTab,
   refreshBadgeForTab,
+  sortPageVersions,
   state,
   versionLabel,
+  buildSignatureFromRefs,
 } from "./shared.mjs";
 
 export function getDb() {
@@ -468,6 +471,114 @@ export function totalStorageBytes() {
 
 export function currentSettings() {
   return state.settings || DEFAULT_SETTINGS;
+}
+
+export function importSourceMapsForPage(payload) {
+  const pageUrl = canonicalPageUrl(payload && payload.pageUrl ? payload.pageUrl : "");
+  const title = payload && payload.title ? String(payload.title).trim() : "";
+  const files = Array.isArray(payload && payload.files) ? payload.files : [];
+
+  if (!pageUrl) {
+    return Promise.reject(new Error("pageUrl is required"));
+  }
+  if (!files.length) {
+    return Promise.reject(new Error("No source map files were provided"));
+  }
+
+  const siteKey = pageSiteKey(pageUrl);
+  const now = new Date().toISOString();
+  const refs = [];
+  const blobs = {};
+  let byteSize = 0;
+
+  files
+    .slice()
+    .sort((a, b) => String(a.mapUrl || "").localeCompare(String(b.mapUrl || "")))
+    .forEach((file) => {
+      const mapUrl = String(file.mapUrl || "").trim();
+      const content = typeof file.content === "string" ? file.content : "";
+      if (!mapUrl || !content) return;
+
+      const mapHash = hashString(content);
+      const blobId = blobStoreKey(siteKey, mapHash);
+      byteSize += content.length;
+
+      refs.push({
+        versionId: "",
+        mapUrl,
+        siteKey,
+        mapHash,
+        blobId,
+        byteSize: content.length,
+      });
+
+      if (!blobs[blobId]) {
+        blobs[blobId] = {
+          id: blobId,
+          siteKey,
+          mapHash,
+          byteSize: content.length,
+          content,
+          createdAt: now,
+          refCount: 0,
+        };
+      }
+    });
+
+  if (!refs.length) {
+    return Promise.reject(new Error("No valid source map files were provided"));
+  }
+
+  const signature = buildSignatureFromRefs(refs);
+  const existingId = ensurePageBucket(pageUrl).find((id) => {
+    return state.versionIndex[id] && state.versionIndex[id].signature === signature;
+  });
+
+  if (existingId) {
+    return Promise.resolve({
+      ok: true,
+      reusedExisting: true,
+      versionId: existingId,
+      importedCount: refs.length,
+      skippedCount: Math.max(0, files.length - refs.length),
+    });
+  }
+
+  const versionId = `${pageUrl}::${Date.now()}::${Math.random().toString(36).slice(2, 8)}`;
+  const meta = {
+    id: versionId,
+    pageUrl,
+    siteKey,
+    title: title || pageUrl,
+    createdAt: now,
+    lastSeenAt: now,
+    signature,
+    mapUrls: refs.map((ref) => ref.mapUrl),
+    mapCount: refs.length,
+    fileCount: refs.length,
+    byteSize,
+    tabId: null,
+  };
+
+  ensurePageBucket(pageUrl).unshift(versionId);
+  state.versionIndex[versionId] = meta;
+  sortPageVersions(pageUrl);
+
+  return persistVersionState(meta, refs, blobs, null)
+    .then(() => {
+      if (currentSettings().autoCleanup) return prunePageHistory(pageUrl);
+      return null;
+    })
+    .then(() => {
+      refreshBadgeForActiveTab();
+      return {
+        ok: true,
+        reusedExisting: false,
+        versionId,
+        importedCount: refs.length,
+        skippedCount: Math.max(0, files.length - refs.length),
+      };
+    });
 }
 
 export function pushSummary(port) {
