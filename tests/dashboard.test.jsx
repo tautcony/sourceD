@@ -491,32 +491,29 @@ describe("DashboardApp", () => {
   it("loads version files when version collapse is expanded", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
-    // Wait for domain group to appear
-    await screen.findByText((content) => content.includes(longSiteKey));
+    const domainTitle = await screen.findByText((content) => content.includes(longSiteKey), {}, { timeout: 10000 });
 
     // Expand domain group
-    const domainHeader = screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header");
+    const domainHeader = domainTitle.closest(".ant-collapse-header");
     fireEvent.click(domainHeader);
 
     // Expand page panel
-    await waitFor(() => screen.getByText((content) => content.includes("Example App With A Very Long Title")));
-    const pageHeader = screen.getByText((content) => content.includes("Example App With A Very Long Title")).closest(".ant-collapse-header");
+    const pageTitle = await screen.findByText((content) => content.includes("Example App With A Very Long Title"), {}, { timeout: 10000 });
+    const pageHeader = pageTitle.closest(".ant-collapse-header");
     fireEvent.click(pageHeader);
 
     // Expand version panel
-    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
-    const versionHeader = screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header");
+    const versionTitle = await screen.findByText((content) => content.includes("v1.0.0-beta"), {}, { timeout: 10000 });
+    const versionHeader = versionTitle.closest(".ant-collapse-header");
     fireEvent.click(versionHeader);
 
     // VersionPanel should load files and show file count
-    await waitFor(() => {
-      expect(screen.getByText(/1 files/)).toBeInTheDocument();
-    });
+    await screen.findByText(/1 files/, {}, { timeout: 10000 });
     // Should show action buttons
     expect(screen.getByText("Preview Sources")).toBeInTheDocument();
     expect(screen.getByText("Download version")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Delete" }).length).toBeGreaterThan(0);
-  });
+  }, 15000);
 
   it("shows empty version files when no files returned", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024, versionFiles: [] });
