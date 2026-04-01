@@ -31,10 +31,10 @@ function mockPopupState(data) {
         files: data.files || [],
         totalStorageBytes: data.totalStorageBytes || 0,
         totalVersions: data.totalVersions || 0,
-        settings: data.settings || { detectionEnabled: true },
+        settings: data.settings || { detectionEnabled: true, ignoredDomains: [] },
       });
     } else if (msg.action === "updateSettings") {
-      cb({ ok: true, settings: Object.assign({ detectionEnabled: true }, msg.settings || {}) });
+      cb({ ok: true, settings: Object.assign({ detectionEnabled: true, ignoredDomains: [] }, msg.settings || {}) });
     } else if (msg.action === "deletePageHistory") {
       if (cb) cb({ ok: true });
     } else {
@@ -159,7 +159,7 @@ describe("PopupApp", () => {
 
   it("toggling detection updates settings", async () => {
     mockPopupState({
-      settings: { detectionEnabled: true },
+      settings: { detectionEnabled: true, ignoredDomains: [] },
     });
     render(<PopupApp />);
     const toggle = await screen.findByRole("switch");
@@ -186,7 +186,7 @@ describe("PopupApp", () => {
           files: [],
           totalStorageBytes: 0,
           totalVersions: 0,
-          settings: { detectionEnabled: true },
+          settings: { detectionEnabled: true, ignoredDomains: [] },
         });
       } else if (msg.action === "updateSettings") {
         cb({ ok: false });
@@ -212,6 +212,50 @@ describe("PopupApp", () => {
     });
 
     expect(toggle).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("adds current domain to ignore list from popup", async () => {
+    mockPopupState({
+      pageUrl: "https://example.com/app",
+      settings: { detectionEnabled: true, ignoredDomains: [] },
+    });
+
+    render(<PopupApp />);
+    await screen.findByText("Current domain: example.com");
+
+    fireEvent.click(screen.getByText("Ignore domain").closest("button"));
+
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "updateSettings",
+          settings: { ignoredDomains: ["example.com"] },
+        }),
+        expect.any(Function),
+      );
+    });
+  });
+
+  it("removes current domain from ignore list from popup", async () => {
+    mockPopupState({
+      pageUrl: "https://example.com/app",
+      settings: { detectionEnabled: true, ignoredDomains: ["example.com"] },
+    });
+
+    render(<PopupApp />);
+    await screen.findByText("Analyze domain");
+
+    fireEvent.click(screen.getByText("Analyze domain").closest("button"));
+
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "updateSettings",
+          settings: { ignoredDomains: [] },
+        }),
+        expect.any(Function),
+      );
+    });
   });
 
   it("clicking Download all triggers downloadGroup", async () => {

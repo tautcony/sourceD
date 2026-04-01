@@ -3,6 +3,7 @@ import {
   latestVersionForPage,
   refreshBadgeForActiveTab,
   refreshBadgeForTab,
+  shouldIgnoreAnalysisForUrl,
   state,
   versionLabel,
 } from "./shared.mjs";
@@ -45,6 +46,7 @@ export function registerRuntimeListeners() {
     chrome,
     state,
     currentSettings,
+    shouldIgnoreAnalysisForUrl,
     getOrCreateSession,
     fetchSourceMap,
     isValidSourceMap,

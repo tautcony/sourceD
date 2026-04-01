@@ -31,6 +31,7 @@ describe("background runtime handlers", () => {
       chrome,
       state,
       currentSettings: () => ({ detectionEnabled: true }),
+      shouldIgnoreAnalysisForUrl: vi.fn(() => false),
       getOrCreateSession: vi.fn(() => session),
       fetchSourceMap: vi.fn((_url, cb) => { state.tabSessions[1] = session; cb("a.map", "content"); }),
       isValidSourceMap: vi.fn(() => true),
@@ -74,6 +75,7 @@ describe("background runtime handlers", () => {
       chrome,
       state,
       currentSettings: () => ({ detectionEnabled }),
+      shouldIgnoreAnalysisForUrl: vi.fn(() => false),
       getOrCreateSession,
       fetchSourceMap,
       isValidSourceMap: vi.fn(() => false),
@@ -112,6 +114,7 @@ describe("background runtime handlers", () => {
       chrome,
       state,
       currentSettings: () => ({ detectionEnabled: true }),
+      shouldIgnoreAnalysisForUrl: vi.fn(() => false),
       getOrCreateSession: vi.fn(() => staleSession),
       fetchSourceMap: vi.fn((_url, cb) => cb("a.map", "content")),
       isValidSourceMap: vi.fn(() => true),
@@ -121,6 +124,27 @@ describe("background runtime handlers", () => {
 
     handler({ type: "script", url: "https://example.com/app.js", tabId: 1 });
     expect(staleSession.maps).toEqual({});
+  });
+
+  it("skips analysis when the current page domain is ignored", () => {
+    const chrome = { runtime: { lastError: null }, tabs: { get: vi.fn((id, cb) => cb({ id, url: "https://example.com/app", title: "Ex" })) } };
+    const getOrCreateSession = vi.fn();
+    const fetchSourceMap = vi.fn();
+    const handler = createWebRequestHandler({
+      chrome,
+      state: { tabSessions: {} },
+      currentSettings: () => ({ detectionEnabled: true, ignoredDomains: ["example.com"] }),
+      shouldIgnoreAnalysisForUrl: vi.fn(() => true),
+      getOrCreateSession,
+      fetchSourceMap,
+      isValidSourceMap: vi.fn(() => true),
+      refreshBadgeForTab: vi.fn(),
+      scheduleSessionPersist: vi.fn(),
+    });
+
+    handler({ type: "script", url: "https://example.com/app.js", tabId: 1 });
+    expect(getOrCreateSession).not.toHaveBeenCalled();
+    expect(fetchSourceMap).not.toHaveBeenCalled();
   });
 
   it("covers popup port non-popup, disconnect, success and error branches", async () => {

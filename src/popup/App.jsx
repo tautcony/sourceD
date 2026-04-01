@@ -1,7 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button, Space, Tooltip, Typography, Tree, Empty, Spin, Flex, ConfigProvider, Switch, theme } from "antd";
 import { DownloadOutlined, HistoryOutlined, DeleteOutlined, FolderOutlined, FileOutlined, GithubOutlined } from "@ant-design/icons";
-import { i18nMessage, fileSizeIEC, parseFileName, sourceMapTreePath, sanitizeFilename } from "../shared/utils.mjs";
+import {
+  fileSizeIEC,
+  hostnameFromUrl,
+  i18nMessage,
+  isHostnameFiltered,
+  normalizeDomainFilterList,
+  parseFileName,
+  sourceMapTreePath,
+  sanitizeFilename,
+} from "../shared/utils.mjs";
 import { parseSourceMap, downloadGroup } from "./sourcemap.mjs";
 
 const { Text, Link: AntLink } = Typography;
@@ -65,6 +74,7 @@ export default function PopupApp() {
   const [totalStorageBytes, setTotalStorageBytes] = useState(0);
   const [totalVersions, setTotalVersions] = useState(0);
   const [detectionEnabled, setDetectionEnabled] = useState(true);
+  const [ignoredDomains, setIgnoredDomains] = useState([]);
   const [togglingDetection, setTogglingDetection] = useState(false);
 
   const loadState = useCallback(() => {
@@ -84,6 +94,7 @@ export default function PopupApp() {
         setTotalStorageBytes(data.totalStorageBytes || 0);
         setTotalVersions(data.totalVersions || 0);
         setDetectionEnabled(data.settings?.detectionEnabled !== false);
+        setIgnoredDomains(normalizeDomainFilterList(data.settings?.ignoredDomains));
       });
     });
   }, []);
@@ -139,6 +150,33 @@ export default function PopupApp() {
     });
   }, []);
 
+  const currentHostname = useMemo(() => hostnameFromUrl(pageUrl), [pageUrl]);
+  const currentDomainIgnored = useMemo(
+    () => isHostnameFiltered(currentHostname, ignoredDomains),
+    [currentHostname, ignoredDomains],
+  );
+
+  const handleUpdateDomainFilter = useCallback((nextIgnoredDomains) => {
+    chrome.runtime.sendMessage({
+      action: "updateSettings",
+      settings: { ignoredDomains: nextIgnoredDomains },
+    }, (resp) => {
+      if (resp?.ok) {
+        setIgnoredDomains(normalizeDomainFilterList(resp.settings?.ignoredDomains));
+      }
+    });
+  }, []);
+
+  const handleAddCurrentDomain = useCallback(() => {
+    if (!currentHostname) return;
+    handleUpdateDomainFilter(normalizeDomainFilterList([...ignoredDomains, currentHostname]));
+  }, [currentHostname, handleUpdateDomainFilter, ignoredDomains]);
+
+  const handleRemoveCurrentDomain = useCallback(() => {
+    if (!currentHostname) return;
+    handleUpdateDomainFilter(ignoredDomains.filter((domain) => domain !== currentHostname));
+  }, [currentHostname, handleUpdateDomainFilter, ignoredDomains]);
+
   const treeData = useMemo(() => {
     if (!files.length) return [];
     return toAntdTreeData(buildMapTree(files));
@@ -183,6 +221,16 @@ export default function PopupApp() {
             <Text type="secondary" style={{ fontSize: 13, lineHeight: 1.35 }}>
               {statsText}
             </Text>
+            {currentHostname ? (
+              <Flex align="center" gap={8} wrap="wrap">
+                <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.35 }}>
+                  {i18nMessage("popupCurrentDomain", [currentHostname])}
+                </Text>
+                <Button size="small" onClick={currentDomainIgnored ? handleRemoveCurrentDomain : handleAddCurrentDomain}>
+                  {currentDomainIgnored ? i18nMessage("popupRemoveDomainFilter") : i18nMessage("popupAddDomainFilter")}
+                </Button>
+              </Flex>
+            ) : null}
           </Flex>
           <Flex vertical gap={10} style={{ flexShrink: 0, minWidth: 0, alignItems: "flex-end" }}>
             <Flex

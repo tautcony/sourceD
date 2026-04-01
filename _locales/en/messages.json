@@ -135,6 +135,18 @@
     "message": "Detect",
     "description": "Popup detection toggle label"
   },
+  "popupCurrentDomain": {
+    "message": "Current domain: $1",
+    "description": "Popup current page domain"
+  },
+  "popupAddDomainFilter": {
+    "message": "Ignore domain",
+    "description": "Popup add current domain to ignore list"
+  },
+  "popupRemoveDomainFilter": {
+    "message": "Analyze domain",
+    "description": "Popup remove current domain from ignore list"
+  },
   "popupLoading": {
     "message": "Loading current page data...",
     "description": "Popup loading state"
@@ -218,6 +230,30 @@
   "dashboardSettingDetectionEnabled": {
     "message": "Enable source map detection",
     "description": "Dashboard setting label"
+  },
+  "dashboardSettingsGroupAnalysis": {
+    "message": "Analysis",
+    "description": "Dashboard settings group"
+  },
+  "dashboardSettingsGroupCapture": {
+    "message": "Capture Limits",
+    "description": "Dashboard settings group"
+  },
+  "dashboardSettingsGroupRetention": {
+    "message": "Retention",
+    "description": "Dashboard settings group"
+  },
+  "dashboardSettingIgnoredDomains": {
+    "message": "Ignored Domains",
+    "description": "Dashboard setting label"
+  },
+  "dashboardSettingIgnoredDomainsHelp": {
+    "message": "One domain per line. Matching pages will no longer be analyzed.",
+    "description": "Dashboard ignored domains help"
+  },
+  "dashboardSettingIgnoredDomainsPlaceholder": {
+    "message": "example.com\nstatic.example.com",
+    "description": "Dashboard ignored domains placeholder"
   },
   "dashboardSettingFetchDelayMs": {
     "message": "Fetch Delay (ms)",

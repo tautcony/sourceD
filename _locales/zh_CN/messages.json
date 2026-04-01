@@ -135,6 +135,18 @@
     "message": "检测",
     "description": "弹窗检测开关标签"
   },
+  "popupCurrentDomain": {
+    "message": "当前域名：$1",
+    "description": "弹窗当前页面域名"
+  },
+  "popupAddDomainFilter": {
+    "message": "加入过滤",
+    "description": "弹窗加入域名过滤"
+  },
+  "popupRemoveDomainFilter": {
+    "message": "移出过滤",
+    "description": "弹窗移出域名过滤"
+  },
   "popupLoading": {
     "message": "正在加载当前页面数据…",
     "description": "弹窗加载文案"
@@ -218,6 +230,30 @@
   "dashboardSettingDetectionEnabled": {
     "message": "启用源映射检测",
     "description": "设置标签"
+  },
+  "dashboardSettingsGroupAnalysis": {
+    "message": "分析控制",
+    "description": "设置分组"
+  },
+  "dashboardSettingsGroupCapture": {
+    "message": "采集限制",
+    "description": "设置分组"
+  },
+  "dashboardSettingsGroupRetention": {
+    "message": "保留策略",
+    "description": "设置分组"
+  },
+  "dashboardSettingIgnoredDomains": {
+    "message": "域名过滤列表",
+    "description": "设置标签"
+  },
+  "dashboardSettingIgnoredDomainsHelp": {
+    "message": "每行一个域名。命中的页面将不再进行分析。",
+    "description": "域名过滤说明"
+  },
+  "dashboardSettingIgnoredDomainsPlaceholder": {
+    "message": "example.com\nstatic.example.com",
+    "description": "域名过滤占位"
   },
   "dashboardSettingFetchDelayMs": {
     "message": "抓取延迟（毫秒）",

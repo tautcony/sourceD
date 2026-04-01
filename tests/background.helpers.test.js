@@ -487,6 +487,7 @@ describe("background storage helpers", () => {
       maxVersionsPerPage: 10,
       autoCleanup: true,
       detectionEnabled: true,
+      ignoredDomains: [],
       fetchDelayMs: 300,
       fetchTimeoutMs: 30_000,
       maxMapBytes: 50 * 1024 * 1024,
@@ -496,6 +497,22 @@ describe("background storage helpers", () => {
     expect(chrome.storage.local.set).toHaveBeenCalledWith(
       expect.objectContaining({
         settings: expect.objectContaining({ detectionEnabled: false }),
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it("normalizes ignored domain settings on load and save", async () => {
+    chrome.storage.local.get = vi.fn((_keys, cb) => cb({ settings: { ignoredDomains: [" Example.com ", "example.com", "api.example.com/path"] } }));
+    const storage = await import("../src/background/storage.mjs");
+
+    const settings = await storage.loadSettings();
+    expect(settings.ignoredDomains).toEqual(["api.example.com", "example.com"]);
+
+    await storage.saveSettings({ ignoredDomains: [" Example.com ", "example.com", "api.example.com/path"] });
+    expect(chrome.storage.local.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({ ignoredDomains: ["api.example.com", "example.com"] }),
       }),
       expect.any(Function),
     );

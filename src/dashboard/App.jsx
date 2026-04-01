@@ -15,7 +15,13 @@ import css from "highlight.js/lib/languages/css";
 import xml from "highlight.js/lib/languages/xml";
 import json from "highlight.js/lib/languages/json";
 import "highlight.js/styles/github.css";
-import { i18nMessage, fileSizeIEC, sourceMapTreePath, uiLocale } from "../shared/utils.mjs";
+import {
+  i18nMessage,
+  fileSizeIEC,
+  normalizeDomainFilterList,
+  sourceMapTreePath,
+  uiLocale,
+} from "../shared/utils.mjs";
 import { downloadGroup, versionZipBaseName, extractSourceFiles } from "../popup/sourcemap.mjs";
 
 hljs.registerLanguage("javascript", javascript);
@@ -382,6 +388,7 @@ function SettingsSection({ settings, onReload }) {
         maxVersionsPerPage: settings.maxVersionsPerPage,
         autoCleanup: !!settings.autoCleanup,
         detectionEnabled: settings.detectionEnabled !== false,
+        ignoredDomains: (settings.ignoredDomains || []).join("\n"),
         fetchDelayMs: settings.fetchDelayMs,
         fetchTimeoutMs: settings.fetchTimeoutMs,
         maxMapBytes: settings.maxMapBytes,
@@ -398,6 +405,7 @@ function SettingsSection({ settings, onReload }) {
         maxVersionsPerPage: Number(values.maxVersionsPerPage) || 10,
         autoCleanup: !!values.autoCleanup,
         detectionEnabled: values.detectionEnabled !== false,
+        ignoredDomains: normalizeDomainFilterList(values.ignoredDomains),
         fetchDelayMs: Number(values.fetchDelayMs) || 300,
         fetchTimeoutMs: Number(values.fetchTimeoutMs) || 30_000,
         maxMapBytes: Number(values.maxMapBytes) || 50 * 1024 * 1024,
@@ -414,33 +422,49 @@ function SettingsSection({ settings, onReload }) {
   }, [message, onReload]);
 
   return (
-    <Form form={form} layout="vertical" onFinish={handleSave} style={{ maxWidth: 400 }}>
-      <Form.Item label={i18nMessage("dashboardSettingRetentionDays")} name="retentionDays">
-        <InputNumber min={1} max={365} style={{ width: "100%" }} />
-      </Form.Item>
-      <Form.Item label={i18nMessage("dashboardSettingMaxVersions")} name="maxVersionsPerPage">
-        <InputNumber min={1} max={100} style={{ width: "100%" }} />
-      </Form.Item>
-      <Form.Item name="autoCleanup" valuePropName="checked">
-        <Switch checkedChildren={i18nMessage("dashboardSettingAutoCleanup")} unCheckedChildren={i18nMessage("dashboardSettingAutoCleanup")} />
-      </Form.Item>
-      <Form.Item name="detectionEnabled" valuePropName="checked">
-        <Switch checkedChildren={i18nMessage("dashboardSettingDetectionEnabled")} unCheckedChildren={i18nMessage("dashboardSettingDetectionEnabled")} />
-      </Form.Item>
-      <Form.Item label={i18nMessage("dashboardSettingFetchDelayMs")} name="fetchDelayMs">
-        <InputNumber min={0} max={5000} style={{ width: "100%" }} />
-      </Form.Item>
-      <Form.Item label={i18nMessage("dashboardSettingFetchTimeoutMs")} name="fetchTimeoutMs">
-        <InputNumber min={500} max={120_000} style={{ width: "100%" }} />
-      </Form.Item>
-      <Form.Item label={i18nMessage("dashboardSettingMaxMapBytes")} name="maxMapBytes">
-        <InputNumber min={1024 * 1024} max={500 * 1024 * 1024} style={{ width: "100%" }} />
-      </Form.Item>
-      <Form.Item>
-        <Button type="primary" htmlType="submit" loading={saving}>
-          {i18nMessage("dashboardSaveSettings")}
-        </Button>
-      </Form.Item>
+    <Form form={form} layout="vertical" onFinish={handleSave}>
+      <Flex vertical gap={12} style={{ maxWidth: 560 }}>
+        <Card size="small" title={i18nMessage("dashboardSettingsGroupAnalysis")}>
+          <Flex vertical gap={4}>
+            <Form.Item name="detectionEnabled" valuePropName="checked" style={{ marginBottom: 12 }}>
+              <Switch checkedChildren={i18nMessage("dashboardSettingDetectionEnabled")} unCheckedChildren={i18nMessage("dashboardSettingDetectionEnabled")} />
+            </Form.Item>
+            <Form.Item label={i18nMessage("dashboardSettingIgnoredDomains")} name="ignoredDomains" extra={i18nMessage("dashboardSettingIgnoredDomainsHelp")} style={{ marginBottom: 0 }}>
+              <Input.TextArea rows={5} placeholder={i18nMessage("dashboardSettingIgnoredDomainsPlaceholder")} />
+            </Form.Item>
+          </Flex>
+        </Card>
+
+        <Card size="small" title={i18nMessage("dashboardSettingsGroupCapture")}>
+          <Form.Item label={i18nMessage("dashboardSettingFetchDelayMs")} name="fetchDelayMs">
+            <InputNumber min={0} max={5000} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item label={i18nMessage("dashboardSettingFetchTimeoutMs")} name="fetchTimeoutMs">
+            <InputNumber min={500} max={120_000} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item label={i18nMessage("dashboardSettingMaxMapBytes")} name="maxMapBytes" style={{ marginBottom: 0 }}>
+            <InputNumber min={1024 * 1024} max={500 * 1024 * 1024} style={{ width: "100%" }} />
+          </Form.Item>
+        </Card>
+
+        <Card size="small" title={i18nMessage("dashboardSettingsGroupRetention")}>
+          <Form.Item label={i18nMessage("dashboardSettingRetentionDays")} name="retentionDays">
+            <InputNumber min={1} max={365} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item label={i18nMessage("dashboardSettingMaxVersions")} name="maxVersionsPerPage">
+            <InputNumber min={1} max={100} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="autoCleanup" valuePropName="checked" style={{ marginBottom: 0 }}>
+            <Switch checkedChildren={i18nMessage("dashboardSettingAutoCleanup")} unCheckedChildren={i18nMessage("dashboardSettingAutoCleanup")} />
+          </Form.Item>
+        </Card>
+
+        <Form.Item style={{ marginBottom: 0 }}>
+          <Button type="primary" htmlType="submit" loading={saving}>
+            {i18nMessage("dashboardSaveSettings")}
+          </Button>
+        </Form.Item>
+      </Flex>
     </Form>
   );
 }
@@ -596,7 +620,7 @@ function DashboardContent() {
       setLoading(false);
       setPages(data?.pages || []);
       setDistribution(data?.distribution || []);
-      setSettings(data?.settings || { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30_000, maxMapBytes: 50 * 1024 * 1024 });
+      setSettings(data?.settings || { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, ignoredDomains: [], fetchDelayMs: 300, fetchTimeoutMs: 30_000, maxMapBytes: 50 * 1024 * 1024 });
       setTotalVersions(data?.totalVersions || 0);
       setTotalStorageBytes(data?.totalStorageBytes || 0);
     });

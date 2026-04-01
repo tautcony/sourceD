@@ -1,6 +1,5 @@
 import {
   BLOB_STORE,
-  DEFAULT_SETTINGS,
   MAP_STORE,
   SETTINGS_KEY,
   VERSION_STORE,
@@ -13,6 +12,7 @@ import {
   rebuildIndexes,
   refreshBadgeForActiveTab,
   refreshBadgeForTab,
+  normalizeSettings,
   sortPageVersions,
   state,
   versionLabel,
@@ -315,14 +315,14 @@ export function loadSettings() {
         reject(err);
         return;
       }
-      state.settings = Object.assign({}, DEFAULT_SETTINGS, data[SETTINGS_KEY] || {});
+      state.settings = normalizeSettings(data[SETTINGS_KEY]);
       resolve(state.settings);
     });
   });
 }
 
 export function saveSettings(nextSettings) {
-  const mergedSettings = Object.assign({}, DEFAULT_SETTINGS, nextSettings || {});
+  const mergedSettings = normalizeSettings(nextSettings);
   return new Promise((resolve, reject) => {
     const payload = {};
     payload[SETTINGS_KEY] = mergedSettings;
@@ -402,7 +402,7 @@ export function totalStorageBytes() {
 }
 
 export function currentSettings() {
-  return state.settings || DEFAULT_SETTINGS;
+  return state.settings || normalizeSettings();
 }
 
 export async function importSourceMapsForPage(payload) {

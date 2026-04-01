@@ -94,3 +94,45 @@ export function sourceMapTreePath(url) {
     return sanitizePath(url).split("/").filter(function (part) { return !!part; });
   }
 }
+
+export function hostnameFromUrl(url) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+export function normalizeDomainFilterEntry(value) {
+  var input = String(value || "").trim().toLowerCase();
+  if (!input) return "";
+
+  if (/^[a-z]+:\/\//.test(input)) {
+    return hostnameFromUrl(input);
+  }
+
+  var withoutPath = input.split("/")[0].split("?")[0].split("#")[0];
+  var withoutPort = withoutPath.split(":")[0];
+  if (!withoutPort) return "";
+  if (!/^[a-z0-9.-]+$/.test(withoutPort)) return "";
+  if (withoutPort.startsWith(".") || withoutPort.endsWith(".")) return "";
+  return withoutPort;
+}
+
+export function normalizeDomainFilterList(values) {
+  var list = Array.isArray(values)
+    ? values
+    : String(values || "").split(/\r?\n/);
+  var unique = new Set();
+  list.forEach(function (value) {
+    var normalized = normalizeDomainFilterEntry(value);
+    if (normalized) unique.add(normalized);
+  });
+  return Array.from(unique).sort();
+}
+
+export function isHostnameFiltered(hostname, ignoredDomains) {
+  var normalizedHost = normalizeDomainFilterEntry(hostname);
+  if (!normalizedHost) return false;
+  return normalizeDomainFilterList(ignoredDomains).includes(normalizedHost);
+}

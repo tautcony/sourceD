@@ -54,7 +54,7 @@ function mockDashboardData(data, extraHandlers = {}) {
       cb({
         pages: data.pages || [],
         distribution: data.distribution || [],
-        settings: data.settings || { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 },
+        settings: data.settings || { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, ignoredDomains: [], fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 },
         totalVersions: data.totalVersions || 0,
         totalStorageBytes: data.totalStorageBytes || 0,
       });
@@ -873,19 +873,24 @@ describe("DashboardApp", () => {
   });
 
   it("renders settings form with initial values", async () => {
-    mockDashboardData({ pages: [], settings: { retentionDays: 60, maxVersionsPerPage: 20, autoCleanup: false } });
+    mockDashboardData({ pages: [], settings: { retentionDays: 60, maxVersionsPerPage: 20, autoCleanup: false, ignoredDomains: ["example.com"] } });
     render(<DashboardApp />);
     await screen.findByText("No history yet.");
 
     // Form should have the input fields
     expect(screen.getByText("Retention Days")).toBeInTheDocument();
     expect(screen.getByText("Max Versions Per Page")).toBeInTheDocument();
+    expect(screen.getByText("Analysis")).toBeInTheDocument();
+    expect(screen.getByText("Ignored Domains")).toBeInTheDocument();
   });
 
-  it("saves settings including detectionEnabled when form is submitted", async () => {
-    mockDashboardData({ pages: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 }, totalVersions: 0, totalStorageBytes: 0 });
+  it("saves settings including detectionEnabled and ignoredDomains when form is submitted", async () => {
+    mockDashboardData({ pages: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, ignoredDomains: ["example.com"], fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 }, totalVersions: 0, totalStorageBytes: 0 });
     render(<DashboardApp />);
     await screen.findByText("No history yet.");
+
+    const ignoredDomainsInput = screen.getByLabelText("Ignored Domains");
+    fireEvent.change(ignoredDomainsInput, { target: { value: "api.example.com\nexample.com\napi.example.com" } });
 
     const saveBtn = screen.getByText("Save Settings").closest("button");
     fireEvent.click(saveBtn);
@@ -894,7 +899,10 @@ describe("DashboardApp", () => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           action: "updateSettings",
-          settings: expect.objectContaining({ detectionEnabled: true }),
+          settings: expect.objectContaining({
+            detectionEnabled: true,
+            ignoredDomains: ["api.example.com", "example.com"],
+          }),
         }),
         expect.any(Function),
       );

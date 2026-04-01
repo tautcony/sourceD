@@ -1,3 +1,5 @@
+import { hostnameFromUrl, isHostnameFiltered, normalizeDomainFilterList } from "../shared/utils.mjs";
+
 export const DB_NAME = "sourced";
 export const DB_VERSION = 4;
 export const VERSION_STORE = "pageVersions";
@@ -11,6 +13,7 @@ export const DEFAULT_SETTINGS = {
   maxVersionsPerPage: 10,
   autoCleanup: true,
   detectionEnabled: true,
+  ignoredDomains: [],
   fetchDelayMs: 300,
   fetchTimeoutMs: 30_000,
   maxMapBytes: 50 * 1024 * 1024,
@@ -65,6 +68,16 @@ export function pageSiteKey(url) {
   } catch {
     return url || "";
   }
+}
+
+export function normalizeSettings(input) {
+  const merged = Object.assign({}, DEFAULT_SETTINGS, input || {});
+  merged.ignoredDomains = normalizeDomainFilterList(merged.ignoredDomains);
+  return merged;
+}
+
+export function shouldIgnoreAnalysisForUrl(url, ignoredDomains) {
+  return isHostnameFiltered(hostnameFromUrl(url), ignoredDomains);
 }
 
 export async function hashString(input) {

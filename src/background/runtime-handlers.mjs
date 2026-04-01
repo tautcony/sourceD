@@ -26,6 +26,7 @@ export function createWebRequestHandler(deps) {
     chrome,
     state,
     currentSettings,
+    shouldIgnoreAnalysisForUrl,
     getOrCreateSession,
     fetchSourceMap,
     isValidSourceMap,
@@ -41,6 +42,7 @@ export function createWebRequestHandler(deps) {
 
     chrome.tabs.get(details.tabId, (tab) => {
       if (chrome.runtime.lastError || !tab || !tab.url) return;
+      if (shouldIgnoreAnalysisForUrl(tab.url, currentSettings().ignoredDomains)) return;
       const session = getOrCreateSession(tab);
 
       fetchSourceMap(details.url, (mapUrl, content) => {
