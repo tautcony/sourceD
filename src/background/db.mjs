@@ -2,6 +2,7 @@ import {
   BLOB_STORE,
   DB_NAME,
   DB_VERSION,
+  LEGACY_DATA_STORES,
   MAP_STORE,
   VERSION_STORE,
   blobStoreKey,
@@ -19,6 +20,7 @@ export function getDb() {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
+      const removedStores = [];
       if (!db.objectStoreNames.contains(VERSION_STORE)) {
         db.createObjectStore(VERSION_STORE, { keyPath: "id" });
       }
@@ -28,6 +30,16 @@ export function getDb() {
       if (!db.objectStoreNames.contains(BLOB_STORE)) {
         db.createObjectStore(BLOB_STORE, { keyPath: "id" });
       }
+      LEGACY_DATA_STORES.forEach((storeName) => {
+        if (!db.objectStoreNames.contains(storeName)) return;
+        db.deleteObjectStore(storeName);
+        removedStores.push(storeName);
+      });
+      state.lastDbMaintenance = {
+        fromVersion: req.transaction?.db?.version || null,
+        toVersion: DB_VERSION,
+        removedStores,
+      };
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => {
@@ -122,10 +134,10 @@ export function loadVersionRefsRaw(db, meta) {
 
     meta.mapUrls.forEach((mapUrl) => {
       const req = store.get(mapStoreKey(meta.id, mapUrl));
-      req.onsuccess = () => {
+      req.onsuccess = async () => {
         const value = req.result;
         if (typeof value === "string") {
-          const mapHash = hashString(value);
+          const mapHash = await hashString(value);
           refs.push({
             versionId: meta.id,
             mapUrl,
@@ -180,4 +192,19 @@ export function loadBlobContentsRaw(db, blobIds) {
       req.onerror = () => reject(req.error);
     });
   });
+}
+
+export function summarizeLegacyDataStores(db) {
+  const lingeringStores = LEGACY_DATA_STORES.filter((storeName) => db.objectStoreNames.contains(storeName));
+  const removedStores = state.lastDbMaintenance?.removedStores || [];
+  if (state.lastDbMaintenance) {
+    state.lastDbMaintenance = Object.assign({}, state.lastDbMaintenance, {
+      removedStores: [],
+    });
+  }
+  return {
+    checkedStores: LEGACY_DATA_STORES.slice(),
+    removedStores: removedStores.slice(),
+    lingeringStores,
+  };
 }

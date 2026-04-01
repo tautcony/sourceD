@@ -1,8 +1,9 @@
 export const DB_NAME = "sourced";
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 export const VERSION_STORE = "pageVersions";
 export const MAP_STORE = "versionMaps";
 export const BLOB_STORE = "mapBlobs";
+export const LEGACY_DATA_STORES = ["sourceMaps"];
 export const SETTINGS_KEY = "settings";
 
 export const DEFAULT_SETTINGS = {
@@ -24,8 +25,9 @@ export const state = {
   versionsByPage: {},
   blobIndex: {},
   settings: null,
-  pendingSourceMapFetches: new Set(),
+  pendingSourceMapFetches: new Map(),
   storageCompactionInProgress: false,
+  lastDbMaintenance: null,
 };
 
 export function setBadgeText(num, tabId) {

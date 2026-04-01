@@ -10,6 +10,17 @@ function postPortError(port, action, err) {
   });
 }
 
+function emptyCleanupStats() {
+  return {
+    removedVersions: 0,
+    removedMaps: 0,
+    reclaimedBytes: 0,
+    remainingVersions: 0,
+    remainingMaps: 0,
+    remainingBytes: 0,
+  };
+}
+
 export function createWebRequestHandler(deps) {
   const {
     chrome,
@@ -24,7 +35,6 @@ export function createWebRequestHandler(deps) {
 
   return (details) => {
     if (details.type !== "script") return;
-    if (!/\.js(\?.*)?$/.test(details.url)) return;
     if (/^chrome-extension:\/\//.test(details.url)) return;
     if (details.tabId == null || details.tabId < 0) return;
     if (!currentSettings().detectionEnabled) return;
@@ -117,8 +127,10 @@ export function createRuntimeMessageHandler(deps) {
     deletePageHistoryAndSessions,
     deleteSiteHistoryAndSessions,
     compactStorageData,
+    cleanupLegacyDataTables,
     importSourceMapsForPage,
     isValidSourceMap,
+    runCleanupTasks,
   } = deps;
 
   return (message, _sender, sendResponse) => {
@@ -240,32 +252,47 @@ export function createRuntimeMessageHandler(deps) {
     }
 
     if (message.action === "cleanupData") {
-      if (Object.keys(state.versionIndex).length === 0) {
-        sendResponse({
-          ok: true,
-          cleaned: [],
-          stats: {
-            removedVersions: 0,
-            removedMaps: 0,
-            reclaimedBytes: 0,
-            remainingVersions: 0,
-            remainingMaps: 0,
-            remainingBytes: 0,
-          },
+      const runCleanup = runCleanupTasks || (() => {
+        if (Object.keys(state.versionIndex).length === 0) {
+          return Promise.resolve({
+            ok: true,
+            cleaned: [],
+            stats: emptyCleanupStats(),
+            steps: [],
+          });
+        }
+        return compactStorageData().then((storageState) => {
+          return Promise.resolve(cleanupLegacyDataTables ? cleanupLegacyDataTables() : null).then((tableStep) => ({
+            ok: true,
+            cleaned: storageState.invalidVersions,
+            stats: storageState.stats,
+            steps: [
+              {
+                id: "compact-storage",
+                label: "Compact storage data",
+                ok: true,
+                changed: true,
+                summary: "Compacted storage data",
+              },
+              ...(tableStep ? [{
+                id: "cleanup-data-tables",
+                label: "Cleanup legacy data tables",
+                ok: true,
+                changed: !!tableStep.changed,
+                summary: tableStep.summary || "",
+                removedTables: tableStep.removedTables || [],
+              }] : []),
+            ],
+          }));
         });
-        return;
-      }
+      });
 
-      compactStorageData().then((storageState) => {
+      runCleanup().then((cleanupResult) => {
         broadcastSummary();
-        sendResponse({
-          ok: true,
-          cleaned: storageState.invalidVersions,
-          stats: storageState.stats,
-        });
+        sendResponse(cleanupResult);
       }).catch((err) => {
         console.error("[SourceD] cleanup failed:", err);
-        sendResponse({ ok: false, error: errorMessage(err) });
+        sendResponse({ ok: false, error: errorMessage(err), cleaned: [], stats: emptyCleanupStats(), steps: [] });
       });
       return true;
     }

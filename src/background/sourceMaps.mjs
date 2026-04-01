@@ -32,13 +32,24 @@ export function resolveSourceMapUrl(jsUrl, mapRef) {
 
 export function createSourceMapFetcher(state, getSettings) {
   return function fetchSourceMap(jsUrl, callback) {
-    if (state.pendingSourceMapFetches.has(jsUrl)) return;
-    state.pendingSourceMapFetches.add(jsUrl);
+    const existing = state.pendingSourceMapFetches.get(jsUrl);
+    if (existing) {
+      existing.callbacks.push(callback);
+      return;
+    }
+
+    const pending = { callbacks: [callback] };
+    state.pendingSourceMapFetches.set(jsUrl, pending);
 
     const settings = getSettings ? getSettings() : {};
     const fetchDelayMs = settings.fetchDelayMs ?? DEFAULT_FETCH_DELAY_MS;
     const fetchTimeoutMs = settings.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
     const maxMapBytes = settings.maxMapBytes ?? DEFAULT_MAX_MAP_BYTES;
+    const fanOut = (mapUrl, content) => {
+      pending.callbacks.forEach((cb) => {
+        cb(mapUrl, content);
+      });
+    };
 
     setTimeout(() => {
       const controller = new AbortController();
@@ -56,7 +67,7 @@ export function createSourceMapFetcher(state, getSettings) {
           if (mapRef.startsWith("data:application/json")) {
             const b64 = mapRef.split(",")[1];
             try {
-              callback(`${jsUrl}.map`, base64ToUtf8(b64));
+              fanOut(`${jsUrl}.map`, base64ToUtf8(b64));
             } catch (e) {
               console.warn("[SourceD] inline map decode error:", e);
             }
@@ -66,7 +77,7 @@ export function createSourceMapFetcher(state, getSettings) {
           const mapUrl = resolveSourceMapUrl(jsUrl, mapRef);
           return fetchTextWithLimits(mapUrl, controller.signal, maxMapBytes)
             .then((text) => {
-              if (text) callback(mapUrl, text);
+              if (text) fanOut(mapUrl, text);
             })
             .catch((e) => {
               console.warn("[SourceD] map fetch error:", e);

@@ -79,6 +79,7 @@ describe("background runtime regressions", () => {
 
     vi.doMock("../src/background/storage.mjs", () => ({
       broadcastSummary: vi.fn(),
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
       currentSettings: vi.fn(() => ({ detectionEnabled: true })),
       deletePageHistoryAndSessions: vi.fn(),
@@ -92,6 +93,7 @@ describe("background runtime regressions", () => {
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
       saveSettings: vi.fn(() => Promise.resolve()),
       summarizePages: vi.fn(() => []),
       totalStorageBytes: vi.fn(() => 0),
@@ -116,6 +118,45 @@ describe("background runtime regressions", () => {
     expect(chrome.webRequest.onBeforeRequest.addListener).toHaveBeenCalledTimes(1);
   });
 
+  it("does not register listeners if settings loading fails", async () => {
+    const { chrome } = createChromeMock();
+    globalThis.chrome = chrome;
+
+    vi.doMock("../src/background/storage.mjs", () => ({
+      broadcastSummary: vi.fn(),
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
+      compactStorageData: vi.fn(),
+      currentSettings: vi.fn(() => ({ detectionEnabled: true })),
+      deletePageHistoryAndSessions: vi.fn(),
+      deleteSiteHistoryAndSessions: vi.fn(),
+      deleteVersions: vi.fn(),
+      distributionSummary: vi.fn(() => []),
+      ensureStorageReady: vi.fn(() => Promise.resolve()),
+      importSourceMapsForPage: vi.fn(),
+      loadSettings: vi.fn(() => Promise.reject(new Error("settings exploded"))),
+      loadVersionFiles: vi.fn(() => Promise.resolve([])),
+      prunePageHistory: vi.fn(() => Promise.resolve()),
+      pushSummary: vi.fn(),
+      removeVersionsFromIndexes: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
+      saveSettings: vi.fn(() => Promise.resolve()),
+      summarizePages: vi.fn(() => []),
+      totalStorageBytes: vi.fn(() => 0),
+    }));
+
+    vi.doMock("../src/background/sessions.mjs", () => ({
+      cleanupTabSession: vi.fn(),
+      fetchSourceMap: vi.fn(),
+      getOrCreateSession: vi.fn(),
+      isValidSourceMap: vi.fn(() => true),
+      scheduleSessionPersist: vi.fn(),
+    }));
+
+    const runtime = await import("../src/background/runtime.mjs");
+    await expect(runtime.initializeRuntime()).rejects.toThrow("settings exploded");
+    expect(chrome.webRequest.onBeforeRequest.addListener).not.toHaveBeenCalled();
+  });
+
   it("captures clearAll ids before async deletion and reports failures to the popup", async () => {
     const { chrome, listeners } = createChromeMock();
     globalThis.chrome = chrome;
@@ -132,6 +173,7 @@ describe("background runtime regressions", () => {
       return {
         ...actual,
         broadcastSummary,
+        cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
         compactStorageData: vi.fn(),
         currentSettings: vi.fn(() => ({ detectionEnabled: true })),
         deletePageHistoryAndSessions: vi.fn(),
@@ -145,6 +187,7 @@ describe("background runtime regressions", () => {
         prunePageHistory: vi.fn(() => Promise.resolve()),
         pushSummary: vi.fn(),
         removeVersionsFromIndexes,
+        runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
         saveSettings: vi.fn(() => Promise.resolve()),
         summarizePages: vi.fn(() => []),
         totalStorageBytes: vi.fn(() => 0),
@@ -207,6 +250,7 @@ describe("background runtime regressions", () => {
 
     vi.doMock("../src/background/storage.mjs", () => ({
       broadcastSummary: vi.fn(),
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
       currentSettings: vi.fn(() => ({ detectionEnabled: true })),
       deletePageHistoryAndSessions: vi.fn(),
@@ -220,6 +264,7 @@ describe("background runtime regressions", () => {
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
       saveSettings: vi.fn(() => Promise.resolve()),
       summarizePages: vi.fn(() => []),
       totalStorageBytes: vi.fn(() => 12),
@@ -279,9 +324,20 @@ describe("background runtime regressions", () => {
     const summarizePages = vi.fn(() => [{ pageUrl: "https://example.com/app" }]);
     const distribution = [{ siteKey: "https://example.com" }];
     const removeVersionsFromIndexes = vi.fn();
+    const runCleanupTasks = vi.fn(() => Promise.resolve({
+      ok: true,
+      error: null,
+      cleaned: [{ id: "stale", pageUrl: "https://example.com/app", reason: "all_maps_missing", mapCount: 1 }],
+      stats: { removedVersions: 1, removedMaps: 1, reclaimedBytes: 12, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0, upgradedRefs: 4, upgradedVersions: 1 },
+      steps: [
+        { id: "compact-storage", label: "Compact storage data", ok: true, changed: true, summary: "Compacted storage records: 1 versions, 1 maps, 12 bytes reclaimed, upgraded 4 refs across 1 versions" },
+        { id: "cleanup-data-tables", label: "Cleanup legacy data tables", ok: true, changed: true, summary: "Removed 1 legacy data tables", removedTables: ["sourceMaps"] },
+      ],
+    }));
 
     vi.doMock("../src/background/storage.mjs", () => ({
       broadcastSummary,
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: true, summary: "Removed 1 legacy data tables", removedTables: ["sourceMaps"] })),
       compactStorageData,
       currentSettings: vi.fn(() => ({ detectionEnabled: true })),
       deletePageHistoryAndSessions,
@@ -295,6 +351,7 @@ describe("background runtime regressions", () => {
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes,
+      runCleanupTasks,
       saveSettings: vi.fn(() => Promise.resolve()),
       summarizePages,
       totalStorageBytes: vi.fn(() => 99),
@@ -355,8 +412,13 @@ describe("background runtime regressions", () => {
     await flushPromises();
     expect(cleanupResponse).toHaveBeenCalledWith({
       ok: true,
+      error: null,
       cleaned: [{ id: "stale", pageUrl: "https://example.com/app", reason: "all_maps_missing", mapCount: 1 }],
-      stats: { removedVersions: 1, removedMaps: 1, reclaimedBytes: 12, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 },
+      stats: { removedVersions: 1, removedMaps: 1, reclaimedBytes: 12, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0, upgradedRefs: 4, upgradedVersions: 1 },
+      steps: [
+        { id: "compact-storage", label: "Compact storage data", ok: true, changed: true, summary: "Compacted storage records: 1 versions, 1 maps, 12 bytes reclaimed, upgraded 4 refs across 1 versions" },
+        { id: "cleanup-data-tables", label: "Cleanup legacy data tables", ok: true, changed: true, summary: "Removed 1 legacy data tables", removedTables: ["sourceMaps"] },
+      ],
     });
 
     const importResponse = vi.fn();
@@ -391,6 +453,7 @@ describe("background runtime regressions", () => {
 
     vi.doMock("../src/background/storage.mjs", () => ({
       broadcastSummary: vi.fn(),
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
       currentSettings: vi.fn(() => ({ detectionEnabled: true })),
       deletePageHistoryAndSessions: vi.fn(() => Promise.reject(new Error("page exploded"))),
@@ -404,6 +467,23 @@ describe("background runtime regressions", () => {
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes: vi.fn(),
+      runCleanupTasks: vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          error: null,
+          cleaned: [],
+          stats: {
+            removedVersions: 0,
+            removedMaps: 0,
+            reclaimedBytes: 0,
+            remainingVersions: 0,
+            remainingMaps: 0,
+            remainingBytes: 0,
+            upgradedRefs: 0,
+            upgradedVersions: 0,
+          },
+          steps: [{ id: "cleanup-data-tables", label: "Cleanup legacy data tables", ok: true, changed: false, summary: "Legacy data tables already clean" }],
+        }),
       saveSettings: vi.fn(() => Promise.resolve()),
       summarizePages: vi.fn(() => []),
       totalStorageBytes: vi.fn(() => 0),
@@ -425,8 +505,10 @@ describe("background runtime regressions", () => {
 
     const cleanupResponse = vi.fn();
     listeners.onMessage({ action: "cleanupData" }, {}, cleanupResponse);
+    await flushPromises();
     expect(cleanupResponse).toHaveBeenCalledWith({
       ok: true,
+      error: null,
       cleaned: [],
       stats: {
         removedVersions: 0,
@@ -435,7 +517,10 @@ describe("background runtime regressions", () => {
         remainingVersions: 0,
         remainingMaps: 0,
         remainingBytes: 0,
+        upgradedRefs: 0,
+        upgradedVersions: 0,
       },
+      steps: [{ id: "cleanup-data-tables", label: "Cleanup legacy data tables", ok: true, changed: false, summary: "Legacy data tables already clean" }],
     });
 
     const popupState = vi.fn();
@@ -463,6 +548,97 @@ describe("background runtime regressions", () => {
     expect(importError).toHaveBeenCalledWith({ ok: false, error: "import exploded", rejectedFiles: [] });
   });
 
+  it("returns updateSettings failures to the sender", async () => {
+    const { chrome, listeners } = createChromeMock();
+    globalThis.chrome = chrome;
+
+    vi.doMock("../src/background/storage.mjs", () => ({
+      broadcastSummary: vi.fn(),
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
+      compactStorageData: vi.fn(),
+      currentSettings: vi.fn(() => ({ detectionEnabled: true })),
+      deletePageHistoryAndSessions: vi.fn(),
+      deleteSiteHistoryAndSessions: vi.fn(),
+      deleteVersions: vi.fn(),
+      distributionSummary: vi.fn(() => []),
+      ensureStorageReady: vi.fn(() => Promise.resolve()),
+      importSourceMapsForPage: vi.fn(() => Promise.resolve({ ok: true })),
+      loadSettings: vi.fn(() => Promise.resolve({ detectionEnabled: true })),
+      loadVersionFiles: vi.fn(() => Promise.resolve([])),
+      prunePageHistory: vi.fn(() => Promise.resolve()),
+      pushSummary: vi.fn(),
+      removeVersionsFromIndexes: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
+      saveSettings: vi.fn(() => Promise.reject(new Error("settings exploded"))),
+      summarizePages: vi.fn(() => []),
+      totalStorageBytes: vi.fn(() => 0),
+    }));
+
+    vi.doMock("../src/background/sessions.mjs", () => ({
+      cleanupTabSession: vi.fn(),
+      fetchSourceMap: vi.fn(),
+      getOrCreateSession: vi.fn(),
+      isValidSourceMap: vi.fn(() => true),
+      scheduleSessionPersist: vi.fn(),
+    }));
+
+    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
+
+    const sendResponse = vi.fn();
+    const keepOpen = listeners.onMessage({ action: "updateSettings", settings: { detectionEnabled: false } }, {}, sendResponse);
+    expect(keepOpen).toBe(true);
+    await flushPromises();
+    expect(sendResponse).toHaveBeenCalledWith({ ok: false, error: "settings exploded" });
+  });
+
+  it("accepts script requests even when the url is .mjs or extensionless", async () => {
+    const { chrome, listeners } = createChromeMock();
+    globalThis.chrome = chrome;
+
+    const fetchSourceMap = vi.fn();
+    const getOrCreateSession = vi.fn(() => ({ tabId: 7, pageUrl: "https://example.com/app", maps: {} }));
+
+    chrome.tabs.get = vi.fn((tabId, cb) => cb({ id: tabId, url: "https://example.com/app", title: "Example" }));
+
+    vi.doMock("../src/background/storage.mjs", () => ({
+      broadcastSummary: vi.fn(),
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
+      compactStorageData: vi.fn(),
+      currentSettings: vi.fn(() => ({ detectionEnabled: true })),
+      deletePageHistoryAndSessions: vi.fn(),
+      deleteSiteHistoryAndSessions: vi.fn(),
+      deleteVersions: vi.fn(),
+      distributionSummary: vi.fn(() => []),
+      ensureStorageReady: vi.fn(() => Promise.resolve()),
+      importSourceMapsForPage: vi.fn(),
+      loadSettings: vi.fn(() => Promise.resolve({ detectionEnabled: true })),
+      loadVersionFiles: vi.fn(() => Promise.resolve([])),
+      prunePageHistory: vi.fn(() => Promise.resolve()),
+      pushSummary: vi.fn(),
+      removeVersionsFromIndexes: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
+      saveSettings: vi.fn(() => Promise.resolve()),
+      summarizePages: vi.fn(() => []),
+      totalStorageBytes: vi.fn(() => 0),
+    }));
+
+    vi.doMock("../src/background/sessions.mjs", () => ({
+      cleanupTabSession: vi.fn(),
+      fetchSourceMap,
+      getOrCreateSession,
+      isValidSourceMap: vi.fn(() => true),
+      scheduleSessionPersist: vi.fn(),
+    }));
+
+    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
+
+    listeners.onBeforeRequest({ type: "script", url: "https://cdn.example.com/app.mjs", tabId: 7 });
+    listeners.onBeforeRequest({ type: "script", url: "https://cdn.example.com/assets/runtime", tabId: 7 });
+
+    expect(fetchSourceMap).toHaveBeenCalledWith("https://cdn.example.com/app.mjs", expect.any(Function));
+    expect(fetchSourceMap).toHaveBeenCalledWith("https://cdn.example.com/assets/runtime", expect.any(Function));
+  });
+
   it("propagates getVersionFiles, delete and cleanup failures", async () => {
     const { chrome, listeners } = createChromeMock();
     globalThis.chrome = chrome;
@@ -470,6 +646,7 @@ describe("background runtime regressions", () => {
 
     vi.doMock("../src/background/storage.mjs", () => ({
       broadcastSummary: vi.fn(),
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
       currentSettings: vi.fn(() => ({ detectionEnabled: true })),
       deletePageHistoryAndSessions: vi.fn(() => Promise.resolve()),
@@ -483,6 +660,7 @@ describe("background runtime regressions", () => {
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
       saveSettings: vi.fn(() => Promise.resolve()),
       summarizePages: vi.fn(() => []),
       totalStorageBytes: vi.fn(() => 0),
@@ -516,7 +694,20 @@ describe("background runtime regressions", () => {
     expect(keepOpen).toBe(true);
     await flushPromises();
     expect(consoleError).toHaveBeenCalledWith("[SourceD] cleanup failed:", expect.any(Error));
-    expect(cleanupResponse).toHaveBeenCalledWith({ ok: false, error: "cleanup exploded" });
+    expect(cleanupResponse).toHaveBeenCalledWith({
+      ok: false,
+      error: "cleanup exploded",
+      cleaned: [],
+      stats: {
+        removedVersions: 0,
+        removedMaps: 0,
+        reclaimedBytes: 0,
+        remainingVersions: 0,
+        remainingMaps: 0,
+        remainingBytes: 0,
+      },
+      steps: [],
+    });
   });
 });
 
@@ -921,7 +1112,7 @@ describe("fetchSourceMap regressions", () => {
     expect(callback).toHaveBeenCalledWith("https://example.com/app.js.map", inlineMap);
   });
 
-  it("deduplicates concurrent fetches for the same script url", async () => {
+  it("deduplicates concurrent fetches for the same script url while notifying all waiters", async () => {
     globalThis.fetch = vi.fn((url) => {
       if (url.endsWith(".js")) {
         return Promise.resolve({
@@ -938,14 +1129,16 @@ describe("fetchSourceMap regressions", () => {
     });
 
     const sessions = await import("../src/background/sessions.mjs");
-    const callback = vi.fn();
+    const callbackA = vi.fn();
+    const callbackB = vi.fn();
 
-    sessions.fetchSourceMap("https://example.com/app.js", callback);
-    sessions.fetchSourceMap("https://example.com/app.js", callback);
+    sessions.fetchSourceMap("https://example.com/app.js", callbackA);
+    sessions.fetchSourceMap("https://example.com/app.js", callbackB);
     await vi.advanceTimersByTimeAsync(300);
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
-    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callbackA).toHaveBeenCalledTimes(1);
+    expect(callbackB).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 });

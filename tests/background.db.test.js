@@ -15,7 +15,7 @@ describe("background db adapters", () => {
 
   it("handles open success, error and blocked cases", async () => {
     const openReq = requestStub();
-    const fakeDb = { objectStoreNames: { contains: () => false }, createObjectStore: vi.fn() };
+    const fakeDb = { objectStoreNames: { contains: (name) => name === "sourceMaps" }, createObjectStore: vi.fn(), deleteObjectStore: vi.fn(), version: 3 };
     openReq.result = fakeDb;
     globalThis.indexedDB = {
       open: vi.fn(() => {
@@ -29,6 +29,7 @@ describe("background db adapters", () => {
 
     await expect(dbModule.getDb()).resolves.toBe(fakeDb);
     expect(fakeDb.createObjectStore).toHaveBeenCalledTimes(3);
+    expect(fakeDb.deleteObjectStore).toHaveBeenCalledWith("sourceMaps");
 
     state.dbPromise = null;
     const errReq = requestStub();
@@ -118,6 +119,16 @@ describe("background db adapters", () => {
       { key: "v1::a.map", meta: { id: "v1", mapUrls: ["a.map"] }, mapUrl: "a.map", value: "raw" },
     ]);
     await expect(dbModule.loadVersionRefsRaw(successDb, null)).resolves.toEqual([]);
+    await expect(dbModule.loadVersionRefsRaw(successDb, { id: "v1", pageUrl: "https://example.com", siteKey: "https://example.com", mapUrls: ["a.map"] })).resolves.toEqual([
+      expect.objectContaining({
+        versionId: "v1",
+        mapUrl: "a.map",
+        siteKey: "https://example.com",
+        mapHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+        blobId: expect.stringMatching(/^https:\/\/example\.com::[0-9a-f]{64}$/),
+        rawContent: "raw",
+      }),
+    ]);
     await expect(dbModule.loadBlobContentsRaw(successDb, [null])).resolves.toEqual({});
 
     const errorDb = {

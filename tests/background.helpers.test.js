@@ -151,6 +151,14 @@ describe("background shared helpers", () => {
     chrome.tabs.query = vi.fn((_opts, cb) => cb([{ id: 11, url: "https://example.com/app" }]));
     shared.refreshBadgeForActiveTab();
     expect(chrome.tabs.get).toHaveBeenCalled();
+
+    chrome.action.setBadgeText.mockClear();
+    shared.refreshBadgeForTab(-1);
+    expect(chrome.action.setBadgeText).not.toHaveBeenCalled();
+
+    chrome.tabs.get = vi.fn((tabId, cb) => cb({ id: tabId }));
+    shared.refreshBadgeForTab(12);
+    expect(chrome.action.setBadgeText).toHaveBeenLastCalledWith({ text: "", tabId: 12 });
   });
 
   it("rebuilds indexes from stored versions and blobs", async () => {
@@ -174,6 +182,12 @@ describe("background shared helpers", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
       refCount: 2,
     });
+
+    shared.rebuildIndexes([
+      { id: "solo", pageUrl: "https://example.com/solo", createdAt: "2026-03-01T00:00:00.000Z" },
+    ]);
+    expect(shared.state.versionsByPage["https://example.com/solo"]).toEqual(["solo"]);
+    expect(shared.state.blobIndex).toEqual({});
   });
 
   it("hashString returns a 64-char hex SHA-256 digest", async () => {
@@ -260,6 +274,25 @@ describe("background session helpers", () => {
     sessions.cleanupTabSession(9);
     expect(shared.state.tabSessions[9]).toBeUndefined();
     sessions.cleanupTabSession(999);
+
+    shared.state.versionIndex = {};
+    shared.state.versionsByPage = { "https://example.com/ghost": [] };
+    const ghostSession = {
+      tabId: 6,
+      pageUrl: "https://example.com/ghost",
+      title: "Ghost",
+      maps: { "https://example.com/ghost.js.map": "map-content" },
+      versionId: "missing-version",
+      versionOwned: true,
+      signature: "https://example.com/ghost.js.map#" + await shared.hashString("map-content"),
+      timer: null,
+    };
+    await sessions.upsertSessionVersion(ghostSession);
+    expect(storage.persistVersionState).toHaveBeenCalled();
+    expect(storage.persistVersionState.mock.calls.at(-1)[0]).toEqual(expect.objectContaining({
+      id: "missing-version",
+      pageUrl: "https://example.com/ghost",
+    }));
   });
 
   it("covers fetchSourceMap non-happy branches and source map validation", async () => {
@@ -466,6 +499,31 @@ describe("background storage helpers", () => {
       }),
       expect.any(Function),
     );
+  });
+
+  it("rejects settings load/save when chrome.storage reports runtime.lastError", async () => {
+    const storage = await import("../src/background/storage.mjs");
+
+    chrome.storage.local.get = vi.fn((_keys, cb) => {
+      chrome.runtime.lastError = { message: "get exploded" };
+      cb({});
+      chrome.runtime.lastError = null;
+    });
+    await expect(storage.loadSettings()).rejects.toThrow("get exploded");
+
+    chrome.storage.local.set = vi.fn((_payload, cb) => {
+      chrome.runtime.lastError = { message: "set exploded" };
+      cb();
+      chrome.runtime.lastError = null;
+    });
+    await expect(storage.saveSettings({ detectionEnabled: false })).rejects.toThrow("set exploded");
+
+    chrome.storage.local.set = vi.fn((_payload, cb) => {
+      chrome.runtime.lastError = new Error("set exploded as error");
+      cb();
+      chrome.runtime.lastError = null;
+    });
+    await expect(storage.saveSettings({ detectionEnabled: true })).rejects.toThrow("set exploded as error");
   });
 
   it("covers import, summary, prune, clear and delete helpers", async () => {
@@ -720,6 +778,70 @@ describe("background storage helpers", () => {
     expect(shared.state.storageCompactionInProgress).toBe(false);
   });
 
+  it("upgrades old hashed refs and version signatures during compaction", async () => {
+    const storage = await import("../src/background/storage.mjs");
+
+    const meta = {
+      id: "legacy",
+      pageUrl: "https://example.com/app",
+      siteKey: "https://example.com",
+      title: "Legacy",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-02T00:00:00.000Z",
+      mapUrls: ["legacy.map"],
+      mapCount: 1,
+      fileCount: 1,
+      byteSize: 5,
+      signature: "legacy.map#oldhash",
+    };
+
+    const compacted = await storage.buildCompactedStorageState({
+      transaction: () => ({
+        objectStore: (name) => ({
+          getAll: () => createRequest(name === "mapBlobs" ? [{
+            id: "https://example.com::oldhash",
+            siteKey: "https://example.com",
+            mapHash: "oldhash",
+            content: "legacy-content",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          }] : []),
+          get: (key) => createRequest({
+            "legacy::legacy.map": {
+              versionId: "legacy",
+              mapUrl: "legacy.map",
+              siteKey: "https://example.com",
+              mapHash: "oldhash",
+              blobId: "https://example.com::oldhash",
+              byteSize: 5,
+            },
+          }[key]),
+        }),
+      }),
+    }, [meta]);
+
+    expect(compacted.invalidVersions).toEqual([]);
+    expect(compacted.migration).toEqual(expect.objectContaining({
+      upgradedRefs: 1,
+      upgradedVersions: 1,
+    }));
+    expect(compacted.desiredRefs).toHaveLength(1);
+    expect(compacted.desiredRefs[0].value).toEqual(expect.objectContaining({
+      mapUrl: "legacy.map",
+      mapHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      blobId: expect.stringMatching(/^https:\/\/example\.com::[0-9a-f]{64}$/),
+    }));
+    expect(compacted.desiredMetas).toEqual([
+      expect.objectContaining({
+        id: "legacy",
+        signature: expect.stringMatching(/^legacy\.map#[0-9a-f]{64}$/),
+        byteSize: "legacy-content".length,
+        mapUrls: ["legacy.map"],
+      }),
+    ]);
+    expect(compacted.desiredMetas[0].signature).not.toBe("legacy.map#oldhash");
+    expect(compacted.desiredRefs[0].value.blobId).not.toBe("https://example.com::oldhash");
+  });
+
   it("covers persist/delete refcount paths, compaction builder branches, and session clearing", async () => {
     const storage = await import("../src/background/storage.mjs");
     const shared = await import("../src/background/shared.mjs");
@@ -930,5 +1052,138 @@ describe("background storage helpers", () => {
       "https://example.com/import",
       "https://example.com/b",
     ]));
+  });
+
+  it("does not reuse one blob record for different contents when hashes collide", async () => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+    vi.doMock("../src/background/shared.mjs", async () => {
+      const actual = await vi.importActual("../src/background/shared.mjs");
+      return {
+        ...actual,
+        hashString: vi.fn(() => "collision"),
+      };
+    });
+
+    const storage = await import("../src/background/storage.mjs");
+    const shared = await import("../src/background/shared.mjs");
+    const db = createInMemoryDb();
+
+    chrome.tabs.query = vi.fn((_opts, cb) => cb([]));
+    chrome.action = { setBadgeText: vi.fn() };
+    globalThis.indexedDB = {
+      open: vi.fn(() => {
+        const req = { result: db, error: null, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+        queueMicrotask(() => {
+          req.onupgradeneeded?.();
+          req.onsuccess?.();
+        });
+        return req;
+      }),
+    };
+
+    shared.state.dbPromise = null;
+    shared.state.storageReadyPromise = null;
+    shared.state.versionIndex = {};
+    shared.state.versionsByPage = {};
+    shared.state.blobIndex = {};
+    shared.state.settings = { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: false, detectionEnabled: true };
+
+    const result = await storage.importSourceMapsForPage({
+      pageUrl: "https://example.com/app",
+      files: [
+        { mapUrl: "a.map", content: "first" },
+        { mapUrl: "b.map", content: "second" },
+      ],
+    });
+
+    expect(result).toEqual(expect.objectContaining({ ok: true, importedCount: 2 }));
+    expect(Object.keys(shared.state.blobIndex)).toEqual([
+      "https://example.com::collision",
+      "https://example.com::collision::dup1",
+    ]);
+  });
+
+  it("reports legacy table removal only once per actual cleanup", async () => {
+    const storage = await import("../src/background/storage.mjs");
+    const shared = await import("../src/background/shared.mjs");
+
+    shared.state.dbPromise = Promise.resolve({
+      objectStoreNames: {
+        contains(name) {
+          return name === "pageVersions" || name === "versionMaps" || name === "mapBlobs";
+        },
+      },
+    });
+    shared.state.lastDbMaintenance = {
+      fromVersion: 3,
+      toVersion: 4,
+      removedStores: ["sourceMaps"],
+    };
+
+    const first = await storage.cleanupLegacyDataTables();
+    expect(first).toEqual(expect.objectContaining({
+      changed: true,
+      removedTables: ["sourceMaps"],
+      summary: "Removed 1 legacy data tables",
+    }));
+
+    const second = await storage.cleanupLegacyDataTables();
+    expect(second).toEqual(expect.objectContaining({
+      changed: false,
+      removedTables: [],
+      summary: "Legacy data tables already clean",
+    }));
+  });
+
+  it("creates successive duplicate blob suffixes when collisions keep happening", async () => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+    vi.doMock("../src/background/shared.mjs", async () => {
+      const actual = await vi.importActual("../src/background/shared.mjs");
+      return {
+        ...actual,
+        hashString: vi.fn(() => "collision"),
+      };
+    });
+
+    const storage = await import("../src/background/storage.mjs");
+    const shared = await import("../src/background/shared.mjs");
+    const db = createInMemoryDb();
+
+    chrome.tabs.query = vi.fn((_opts, cb) => cb([]));
+    chrome.action = { setBadgeText: vi.fn() };
+    globalThis.indexedDB = {
+      open: vi.fn(() => {
+        const req = { result: db, error: null, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+        queueMicrotask(() => {
+          req.onupgradeneeded?.();
+          req.onsuccess?.();
+        });
+        return req;
+      }),
+    };
+
+    shared.state.dbPromise = null;
+    shared.state.storageReadyPromise = null;
+    shared.state.versionIndex = {};
+    shared.state.versionsByPage = {};
+    shared.state.blobIndex = {};
+    shared.state.settings = { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: false, detectionEnabled: true };
+
+    await storage.importSourceMapsForPage({
+      pageUrl: "https://example.com/app",
+      files: [
+        { mapUrl: "a.map", content: "first" },
+        { mapUrl: "b.map", content: "second" },
+        { mapUrl: "c.map", content: "third" },
+      ],
+    });
+
+    expect(Object.keys(shared.state.blobIndex)).toEqual([
+      "https://example.com::collision",
+      "https://example.com::collision::dup1",
+      "https://example.com::collision::dup2",
+    ]);
   });
 });

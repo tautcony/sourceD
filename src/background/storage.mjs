@@ -20,11 +20,13 @@ import {
 } from "./shared.mjs";
 import {
   ensureStorageReady,
+  getDb,
   listAllBlobsRaw,
   listAllVersionsRaw,
   loadBlobContentsRaw,
   loadStoredMapEntriesRaw,
   loadVersionRefsRaw,
+  summarizeLegacyDataStores,
 } from "./db.mjs";
 export {
   ensureStorageReady,
@@ -36,9 +38,68 @@ export {
   loadVersionRefsRaw,
 } from "./db.mjs";
 
+const EMPTY_CLEANUP_STATS = {
+  removedVersions: 0,
+  removedMaps: 0,
+  reclaimedBytes: 0,
+  remainingVersions: 0,
+  remainingMaps: 0,
+  remainingBytes: 0,
+  upgradedRefs: 0,
+  upgradedVersions: 0,
+};
+
 function adjustBlobDelta(deltaByBlob, blobId, amount) {
   deltaByBlob[blobId] = (deltaByBlob[blobId] || 0) + amount;
   if (deltaByBlob[blobId] === 0) delete deltaByBlob[blobId];
+}
+
+function runtimeLastError() {
+  const err = chrome.runtime?.lastError;
+  if (!err) return null;
+  return err instanceof Error ? err : new Error(err.message || String(err));
+}
+
+function uniqueBlobId(blobMap, preferredBlobId, content) {
+  let candidate = preferredBlobId;
+  let suffix = 1;
+  while (blobMap[candidate] && blobMap[candidate].content !== content) {
+    candidate = `${preferredBlobId}::dup${suffix}`;
+    suffix++;
+  }
+  return candidate;
+}
+
+function cleanupErrorMessage(err) {
+  return err && err.message ? err.message : String(err);
+}
+
+function mergeCleanupStats(baseStats, stepStats) {
+  if (!stepStats) return baseStats;
+  return {
+    removedVersions: (baseStats.removedVersions || 0) + (Number(stepStats.removedVersions) || 0),
+    removedMaps: (baseStats.removedMaps || 0) + (Number(stepStats.removedMaps) || 0),
+    reclaimedBytes: (baseStats.reclaimedBytes || 0) + (Number(stepStats.reclaimedBytes) || 0),
+    upgradedRefs: (baseStats.upgradedRefs || 0) + (Number(stepStats.upgradedRefs) || 0),
+    upgradedVersions: (baseStats.upgradedVersions || 0) + (Number(stepStats.upgradedVersions) || 0),
+    remainingVersions: stepStats.remainingVersions ?? baseStats.remainingVersions,
+    remainingMaps: stepStats.remainingMaps ?? baseStats.remainingMaps,
+    remainingBytes: stepStats.remainingBytes ?? baseStats.remainingBytes,
+  };
+}
+
+function rebuildVersionMetaFromRefs(meta, refs, siteKey) {
+  const nextRefs = refs.slice().sort((a, b) => a.mapUrl.localeCompare(b.mapUrl));
+  const mapUrls = nextRefs.map((ref) => ref.mapUrl);
+  const byteSize = nextRefs.reduce((sum, ref) => sum + (Number(ref.byteSize) || 0), 0);
+  return Object.assign({}, meta, {
+    siteKey,
+    mapUrls,
+    mapCount: mapUrls.length,
+    fileCount: mapUrls.length,
+    byteSize,
+    signature: buildSignatureFromRefs(nextRefs),
+  });
 }
 
 function putBlobRecordWithRefCount(blobStore, blobId, nextCount, fallbackRecord) {
@@ -247,8 +308,13 @@ export function loadVersionFiles(versionId) {
 }
 
 export function loadSettings() {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     chrome.storage.local.get([SETTINGS_KEY], (data) => {
+      const err = runtimeLastError();
+      if (err) {
+        reject(err);
+        return;
+      }
       state.settings = Object.assign({}, DEFAULT_SETTINGS, data[SETTINGS_KEY] || {});
       resolve(state.settings);
     });
@@ -256,11 +322,19 @@ export function loadSettings() {
 }
 
 export function saveSettings(nextSettings) {
-  state.settings = Object.assign({}, DEFAULT_SETTINGS, nextSettings || {});
-  return new Promise((resolve) => {
+  const mergedSettings = Object.assign({}, DEFAULT_SETTINGS, nextSettings || {});
+  return new Promise((resolve, reject) => {
     const payload = {};
-    payload[SETTINGS_KEY] = state.settings;
-    chrome.storage.local.set(payload, resolve);
+    payload[SETTINGS_KEY] = mergedSettings;
+    chrome.storage.local.set(payload, () => {
+      const err = runtimeLastError();
+      if (err) {
+        reject(err);
+        return;
+      }
+      state.settings = mergedSettings;
+      resolve(mergedSettings);
+    });
   });
 }
 
@@ -359,7 +433,7 @@ export async function importSourceMapsForPage(payload) {
     if (!mapUrl || !content) continue;
 
     const mapHash = await hashString(content);
-    const blobId = blobStoreKey(siteKey, mapHash);
+    const blobId = uniqueBlobId(blobs, blobStoreKey(siteKey, mapHash), content);
     byteSize += content.length;
 
     refs.push({
@@ -485,8 +559,11 @@ export function buildCompactedStorageState(db, metas) {
     const existingBlobMap = {};
     const desiredRefs = [];
     const desiredBlobs = {};
+    const desiredVersionMap = {};
     const invalidVersionMap = {};
     const validRefsByVersion = {};
+    let upgradedRefs = 0;
+    let upgradedVersions = 0;
 
     existingBlobs.forEach((blob) => {
       existingBlobMap[blob.id] = blob;
@@ -498,39 +575,50 @@ export function buildCompactedStorageState(db, metas) {
       const value = entry.value;
       let content = null;
       let mapHash = null;
-      let blobId = null;
 
       if (typeof value === "string") {
         content = value;
-        mapHash = await hashString(content);
-        blobId = blobStoreKey(siteKey, mapHash);
+        upgradedRefs++;
       } else if (value) {
-        mapHash = value.mapHash || null;
-        blobId = value.blobId || (mapHash ? blobStoreKey(siteKey, mapHash) : null);
+        const previousMapHash = value.mapHash || null;
+        const blobId = value.blobId || (value.mapHash ? blobStoreKey(siteKey, value.mapHash) : null);
         if (blobId && existingBlobMap[blobId] && existingBlobMap[blobId].content != null) {
           content = existingBlobMap[blobId].content;
         }
+        value._legacyMapHash = previousMapHash;
+        value._legacyBlobId = blobId;
       }
 
       if (content == null) {
         continue;
       }
 
-      if (!mapHash) mapHash = await hashString(content);
-      if (!blobId) blobId = blobStoreKey(siteKey, mapHash);
-      validRefsByVersion[meta.id] = (validRefsByVersion[meta.id] || 0) + 1;
+      mapHash = await hashString(content);
+      let blobId = blobStoreKey(siteKey, mapHash);
+      blobId = uniqueBlobId(desiredBlobs, blobId, content);
+
+      const nextRef = {
+        versionId: meta.id,
+        mapUrl: entry.mapUrl,
+        siteKey,
+        mapHash,
+        blobId,
+        byteSize: content.length,
+      };
+
+      if (value && typeof value !== "string") {
+        if (value._legacyMapHash !== mapHash || value._legacyBlobId !== blobId) {
+          upgradedRefs++;
+        }
+      }
 
       desiredRefs.push({
         key: entry.key,
-        value: {
-          versionId: meta.id,
-          mapUrl: entry.mapUrl,
-          siteKey,
-          mapHash,
-          blobId,
-          byteSize: content.length,
-        },
+        value: nextRef,
       });
+
+      if (!validRefsByVersion[meta.id]) validRefsByVersion[meta.id] = [];
+      validRefsByVersion[meta.id].push(nextRef);
 
       if (!desiredBlobs[blobId]) {
         desiredBlobs[blobId] = {
@@ -547,19 +635,37 @@ export function buildCompactedStorageState(db, metas) {
     }
 
     metas.forEach((meta) => {
-      if ((validRefsByVersion[meta.id] || 0) > 0) return;
-      invalidVersionMap[meta.id] = {
-        id: meta.id,
-        pageUrl: meta.pageUrl,
-        reason: "all_maps_missing",
-        mapCount: meta.mapUrls ? meta.mapUrls.length : 0,
-      };
+      const refs = validRefsByVersion[meta.id] || [];
+      if (refs.length === 0) {
+        invalidVersionMap[meta.id] = {
+          id: meta.id,
+          pageUrl: meta.pageUrl,
+          reason: "all_maps_missing",
+          mapCount: meta.mapUrls ? meta.mapUrls.length : 0,
+        };
+        return;
+      }
+      const nextMeta = rebuildVersionMetaFromRefs(meta, refs, meta.siteKey || pageSiteKey(meta.pageUrl));
+      if (
+        nextMeta.signature !== meta.signature
+        || nextMeta.byteSize !== meta.byteSize
+        || JSON.stringify(nextMeta.mapUrls || []) !== JSON.stringify(meta.mapUrls || [])
+        || nextMeta.mapCount !== meta.mapCount
+      ) {
+        upgradedVersions++;
+      }
+      desiredVersionMap[meta.id] = nextMeta;
     });
 
     return {
+      desiredMetas: Object.keys(desiredVersionMap).map((id) => desiredVersionMap[id]),
       desiredRefs,
       desiredBlobs: Object.keys(desiredBlobs).map((blobId) => desiredBlobs[blobId]),
       invalidVersions: Object.keys(invalidVersionMap).map((id) => invalidVersionMap[id]),
+      migration: {
+        upgradedRefs,
+        upgradedVersions,
+      },
     };
   });
 }
@@ -590,6 +696,12 @@ export function compactStorageData() {
           if (invalidMap[meta.id]) versionStore.delete(meta.id);
         });
 
+        storageState.desiredMetas.forEach((meta) => {
+          if (!invalidMap[meta.id]) {
+            versionStore.put(meta);
+          }
+        });
+
         storageState.desiredRefs.forEach((entry) => {
           if (!invalidMap[entry.value.versionId]) {
             mapStore.put(entry.value, entry.key);
@@ -618,12 +730,114 @@ export function compactStorageData() {
           remainingVersions: results[0].length,
           remainingMaps: results[1].length,
           remainingBytes: totalStorageBytes(),
+          upgradedRefs: Number(storageState.migration?.upgradedRefs) || 0,
+          upgradedVersions: Number(storageState.migration?.upgradedVersions) || 0,
         },
       };
     }));
   })).finally(() => {
     state.storageCompactionInProgress = false;
   });
+}
+
+export function cleanupLegacyDataTables() {
+  return getDb().then((db) => {
+    const summary = summarizeLegacyDataStores(db);
+    const removedCount = summary.removedStores.length;
+    const lingeringCount = summary.lingeringStores.length;
+
+    return {
+      checkedTables: summary.checkedStores,
+      removedTables: summary.removedStores,
+      lingeringTables: summary.lingeringStores,
+      changed: removedCount > 0,
+      summary: lingeringCount > 0
+        ? `Legacy data tables still require cleanup: ${summary.lingeringStores.join(", ")}`
+        : removedCount > 0
+          ? `Removed ${removedCount} legacy data tables`
+          : "Legacy data tables already clean",
+    };
+  });
+}
+
+export async function runCleanupTasks() {
+  const stepDefs = [
+    {
+      id: "compact-storage",
+      label: "Compact storage data",
+      run: async () => {
+        if (Object.keys(state.versionIndex).length === 0) {
+          return {
+            changed: false,
+            cleaned: [],
+            stats: EMPTY_CLEANUP_STATS,
+            summary: "No stored versions required compaction",
+          };
+        }
+        const result = await compactStorageData();
+        const stats = result.stats || EMPTY_CLEANUP_STATS;
+        return {
+          changed: (result.invalidVersions || []).length > 0
+            || (Number(stats.removedVersions) || 0) > 0
+            || (Number(stats.removedMaps) || 0) > 0
+            || (Number(stats.reclaimedBytes) || 0) > 0
+            || (Number(stats.upgradedRefs) || 0) > 0
+            || (Number(stats.upgradedVersions) || 0) > 0,
+          cleaned: result.invalidVersions || [],
+          stats,
+          summary: `Compacted storage records: ${Number(stats.removedVersions) || 0} versions, ${Number(stats.removedMaps) || 0} maps, ${Number(stats.reclaimedBytes) || 0} bytes reclaimed, upgraded ${Number(stats.upgradedRefs) || 0} refs across ${Number(stats.upgradedVersions) || 0} versions`,
+        };
+      },
+    },
+    {
+      id: "cleanup-data-tables",
+      label: "Cleanup legacy data tables",
+      run: cleanupLegacyDataTables,
+    },
+  ];
+
+  const steps = [];
+  let stats = { ...EMPTY_CLEANUP_STATS };
+  let cleaned = [];
+  let failedCount = 0;
+
+  for (const stepDef of stepDefs) {
+    try {
+      const result = await stepDef.run();
+      steps.push({
+        id: stepDef.id,
+        label: stepDef.label,
+        ok: true,
+        changed: !!result.changed,
+        summary: result.summary || "",
+        cleaned: result.cleaned || [],
+        stats: result.stats || null,
+        checkedTables: result.checkedTables || [],
+        removedTables: result.removedTables || [],
+        lingeringTables: result.lingeringTables || [],
+      });
+      cleaned = cleaned.concat(result.cleaned || []);
+      stats = mergeCleanupStats(stats, result.stats);
+    } catch (err) {
+      failedCount++;
+      steps.push({
+        id: stepDef.id,
+        label: stepDef.label,
+        ok: false,
+        changed: false,
+        summary: `${stepDef.label} failed: ${cleanupErrorMessage(err)}`,
+        error: cleanupErrorMessage(err),
+      });
+    }
+  }
+
+  return {
+    ok: failedCount === 0,
+    error: failedCount === 0 ? null : `${failedCount} cleanup steps failed`,
+    cleaned,
+    stats,
+    steps,
+  };
 }
 
 export function clearSessionsForPage(pageUrl) {

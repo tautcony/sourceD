@@ -10,8 +10,12 @@ const messageApi = {
   info: vi.fn(),
   error: vi.fn(),
 };
+const modalApi = {
+  info: vi.fn(),
+  error: vi.fn(),
+};
 
-vi.spyOn(AntdApp, "useApp").mockImplementation(() => ({ message: messageApi }));
+vi.spyOn(AntdApp, "useApp").mockImplementation(() => ({ message: messageApi, modal: modalApi }));
 
 // Minimal valid source map with embedded sources
 function makeSourceMap(sources, sourcesContent) {
@@ -85,6 +89,8 @@ beforeEach(() => {
   messageApi.success.mockReset();
   messageApi.info.mockReset();
   messageApi.error.mockReset();
+  modalApi.info.mockReset();
+  modalApi.error.mockReset();
 });
 
 describe("DashboardApp", () => {
@@ -357,7 +363,13 @@ describe("DashboardApp", () => {
       if (msg.action === "getDashboardData") {
         cb({ pages: mockPages, distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 }, totalVersions: 1, totalStorageBytes: 1024 });
       } else if (msg.action === "cleanupData") {
-        cb({ ok: true, cleaned: [] });
+        cb({
+          ok: true,
+          error: null,
+          cleaned: [],
+          stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 1, remainingMaps: 1, remainingBytes: 1024, upgradedRefs: 0, upgradedVersions: 0 },
+          steps: [{ id: "cleanup-data-tables", label: "Cleanup legacy data tables", ok: true, changed: false, summary: "Legacy data tables already clean" }],
+        });
       } else {
         cb(null);
       }
@@ -367,7 +379,10 @@ describe("DashboardApp", () => {
     const cleanBtn = screen.getByText("Optimize Storage").closest("button");
     fireEvent.click(cleanBtn);
     await waitFor(() => {
-      expect(messageApi.info).toHaveBeenCalledWith("No abnormal data found and no storage optimization was needed");
+      expect(modalApi.info).toHaveBeenCalledWith(expect.objectContaining({
+        title: "Storage Cleanup Checked",
+        content: expect.anything(),
+      }));
     });
   });
 
@@ -378,8 +393,13 @@ describe("DashboardApp", () => {
       } else if (msg.action === "cleanupData") {
         cb({
           ok: true,
+          error: null,
           cleaned: [{ id: "v1", pageUrl: "https://example.com", reason: "all_maps_missing", mapCount: 3 }],
-          stats: { removedVersions: 1, removedMaps: 3, reclaimedBytes: 1024 },
+          stats: { removedVersions: 1, removedMaps: 3, reclaimedBytes: 1024, upgradedRefs: 8, upgradedVersions: 2 },
+          steps: [
+            { id: "compact-storage", label: "Compact storage data", ok: true, changed: true, summary: "Compacted storage records: 1 versions, 3 maps, 1024 bytes reclaimed, upgraded 8 refs across 2 versions" },
+            { id: "cleanup-data-tables", label: "Cleanup legacy data tables", ok: true, changed: true, summary: "Removed 1 legacy data tables", removedTables: ["sourceMaps"] },
+          ],
         });
       } else {
         cb(null);
@@ -390,9 +410,10 @@ describe("DashboardApp", () => {
     const cleanBtn = screen.getByText("Optimize Storage").closest("button");
     fireEvent.click(cleanBtn);
     await waitFor(() => {
-      expect(messageApi.success).toHaveBeenCalledWith(
-        expect.objectContaining({ content: "Abnormal data cleaned: 1 versions · Storage optimized: 3 maps, 1.00 KB reclaimed" }),
-      );
+      expect(modalApi.info).toHaveBeenCalledWith(expect.objectContaining({
+        title: "Storage Cleanup Completed",
+        content: expect.anything(),
+      }));
     });
   });
 
@@ -401,7 +422,11 @@ describe("DashboardApp", () => {
       if (msg.action === "getDashboardData") {
         cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 }, totalVersions: 0, totalStorageBytes: 0 });
       } else if (msg.action === "cleanupData") {
-        cb({ ok: false, error: "cleanup exploded" });
+        cb({
+          ok: false,
+          error: "1 cleanup steps failed",
+          steps: [{ id: "cleanup-data-tables", label: "Cleanup legacy data tables", ok: false, summary: "Cleanup legacy data tables failed: cleanup exploded", error: "cleanup exploded" }],
+        });
       } else {
         cb(null);
       }
@@ -410,7 +435,10 @@ describe("DashboardApp", () => {
     await screen.findByText("No history yet.");
     fireEvent.click(screen.getByText("Optimize Storage").closest("button"));
     await waitFor(() => {
-      expect(messageApi.error).toHaveBeenCalledWith("cleanup exploded");
+      expect(modalApi.error).toHaveBeenCalledWith(expect.objectContaining({
+        title: "Storage Cleanup Failed",
+        content: expect.anything(),
+      }));
     });
   });
 
@@ -419,7 +447,7 @@ describe("DashboardApp", () => {
       if (msg.action === "getDashboardData") {
         cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 }, totalVersions: 0, totalStorageBytes: 0 });
       } else if (msg.action === "cleanupData") {
-        cb({ ok: false });
+        cb({ ok: false, steps: [] });
       } else {
         cb(null);
       }
@@ -428,7 +456,10 @@ describe("DashboardApp", () => {
     await screen.findByText("No history yet.");
     fireEvent.click(screen.getByText("Optimize Storage").closest("button"));
     await waitFor(() => {
-      expect(messageApi.error).toHaveBeenCalledWith("Cleanup failed");
+      expect(modalApi.error).toHaveBeenCalledWith(expect.objectContaining({
+        title: "Storage Cleanup Failed",
+        content: expect.anything(),
+      }));
     });
   });
 
@@ -439,7 +470,10 @@ describe("DashboardApp", () => {
       } else if (msg.action === "cleanupData") {
         cb({
           ok: true,
+          error: null,
           cleaned: [{ id: "v1", pageUrl: "https://example.com", reason: "all_maps_missing", mapCount: 2 }],
+          stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0, upgradedRefs: 2, upgradedVersions: 1 },
+          steps: [{ id: "compact-storage", label: "Compact storage data", ok: true, changed: true, summary: "Compacted storage records: 1 versions, 0 maps, 0 bytes reclaimed, upgraded 2 refs across 1 versions" }],
         });
       } else {
         cb(null);
@@ -449,9 +483,10 @@ describe("DashboardApp", () => {
     await screen.findByText("No history yet.");
     fireEvent.click(screen.getByText("Optimize Storage").closest("button"));
     await waitFor(() => {
-      expect(messageApi.success).toHaveBeenCalledWith(
-        expect.objectContaining({ content: "Abnormal data cleaned: 1 versions · Storage optimized: 0 maps, 0 Bytes reclaimed" }),
-      );
+      expect(modalApi.info).toHaveBeenCalledWith(expect.objectContaining({
+        title: "Storage Cleanup Completed",
+        content: expect.anything(),
+      }));
     });
   });
 

@@ -39,15 +39,69 @@ describe("background runtime handlers", () => {
     });
 
     handler({ type: "image", url: "https://example.com/app.js", tabId: 1 });
-    handler({ type: "script", url: "https://example.com/app.css", tabId: 1 });
     handler({ type: "script", url: "chrome-extension://id/a.js", tabId: 1 });
     handler({ type: "script", url: "https://example.com/app.js", tabId: -1 });
     expect(chrome.tabs.get).not.toHaveBeenCalled();
 
+    handler({ type: "script", url: "https://example.com/assets/runtime", tabId: 1 });
+    expect(session.maps).toEqual({ "a.map": "content" });
+    expect(refreshBadgeForTab).toHaveBeenCalledWith(1, "https://example.com/app");
+    expect(scheduleSessionPersist).toHaveBeenCalledWith(session);
+
+    session.maps = {};
+    refreshBadgeForTab.mockClear();
+    scheduleSessionPersist.mockClear();
     handler({ type: "script", url: "https://example.com/app.js", tabId: 1 });
     expect(session.maps).toEqual({ "a.map": "content" });
     expect(refreshBadgeForTab).toHaveBeenCalledWith(1, "https://example.com/app");
     expect(scheduleSessionPersist).toHaveBeenCalledWith(session);
+  });
+
+  it("drops requests when detection is disabled, tab lookup fails, or map content is invalid", () => {
+    const chrome = {
+      runtime: { lastError: null },
+      tabs: { get: vi.fn((id, cb) => cb({ id, url: "https://example.com/app", title: "Ex" })) },
+    };
+    const state = { tabSessions: {} };
+    const session = { tabId: 1, pageUrl: "https://example.com/app", maps: {} };
+    const getOrCreateSession = vi.fn(() => session);
+    const fetchSourceMap = vi.fn((_url, cb) => cb("a.map", "bad-content"));
+    const refreshBadgeForTab = vi.fn();
+    const scheduleSessionPersist = vi.fn();
+
+    let detectionEnabled = false;
+    const handler = createWebRequestHandler({
+      chrome,
+      state,
+      currentSettings: () => ({ detectionEnabled }),
+      getOrCreateSession,
+      fetchSourceMap,
+      isValidSourceMap: vi.fn(() => false),
+      refreshBadgeForTab,
+      scheduleSessionPersist,
+    });
+
+    handler({ type: "script", url: "https://example.com/app.js", tabId: 1 });
+    expect(chrome.tabs.get).not.toHaveBeenCalled();
+
+    detectionEnabled = true;
+    chrome.runtime.lastError = { message: "tab exploded" };
+    chrome.tabs.get = vi.fn((id, cb) => cb({ id, url: "https://example.com/app", title: "Ex" }));
+    handler({ type: "script", url: "https://example.com/app.js", tabId: 1 });
+    expect(getOrCreateSession).not.toHaveBeenCalled();
+
+    chrome.runtime.lastError = null;
+    chrome.tabs.get = vi.fn((id, cb) => cb({ id, title: "Ex" }));
+    handler({ type: "script", url: "https://example.com/app.js", tabId: 1 });
+    expect(getOrCreateSession).not.toHaveBeenCalled();
+
+    chrome.tabs.get = vi.fn((id, cb) => cb({ id, url: "https://example.com/app", title: "Ex" }));
+    handler({ type: "script", url: "https://example.com/app.js", tabId: 1 });
+    expect(getOrCreateSession).toHaveBeenCalled();
+    expect(fetchSourceMap).toHaveBeenCalled();
+    expect(session.maps).toEqual({});
+    expect(refreshBadgeForTab).not.toHaveBeenCalled();
+    expect(scheduleSessionPersist).not.toHaveBeenCalled();
   });
 
   it("drops fetched maps when the active tab session has changed", () => {
@@ -158,8 +212,10 @@ describe("background runtime handlers", () => {
       deletePageHistoryAndSessions: vi.fn(() => Promise.resolve()),
       deleteSiteHistoryAndSessions: vi.fn(() => Promise.resolve()),
       compactStorageData: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       importSourceMapsForPage: vi.fn(() => Promise.resolve({ ok: true })),
       isValidSourceMap: vi.fn((content) => content === "good"),
+      runCleanupTasks: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
     };
     const handler = createRuntimeMessageHandler(deps);
     const sendResponse = vi.fn();
@@ -181,7 +237,20 @@ describe("background runtime handlers", () => {
     handler({ action: "cleanupData" }, {}, sendResponse);
     await flushPromises();
     expect(consoleError).toHaveBeenCalledWith("[SourceD] cleanup failed:", expect.any(Error));
-    expect(sendResponse).toHaveBeenLastCalledWith({ ok: false, error: "cleanup exploded" });
+    expect(sendResponse).toHaveBeenLastCalledWith({
+      ok: false,
+      error: "cleanup exploded",
+      cleaned: [],
+      stats: {
+        removedVersions: 0,
+        removedMaps: 0,
+        reclaimedBytes: 0,
+        remainingVersions: 0,
+        remainingMaps: 0,
+        remainingBytes: 0,
+      },
+      steps: [],
+    });
 
     handler({
       action: "importSourceMaps",
@@ -236,8 +305,61 @@ describe("background runtime handlers", () => {
         invalidVersions: [{ id: "bad" }],
         stats: { removedVersions: 1, removedMaps: 2, reclaimedBytes: 3, remainingVersions: 4, remainingMaps: 5, remainingBytes: 6 },
       }),
+      cleanupLegacyDataTables: vi.fn().mockResolvedValueOnce({
+        changed: true,
+        summary: "Removed 1 legacy data tables",
+        removedTables: ["sourceMaps"],
+      }).mockResolvedValueOnce({
+        changed: false,
+        summary: "Legacy data tables already clean",
+        removedTables: [],
+      }),
       importSourceMapsForPage: vi.fn().mockRejectedValueOnce("import failed"),
       isValidSourceMap: vi.fn(() => false),
+      runCleanupTasks: vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          cleaned: [],
+          stats: {
+            removedVersions: 0,
+            removedMaps: 0,
+            reclaimedBytes: 0,
+            remainingVersions: 0,
+            remainingMaps: 0,
+            remainingBytes: 0,
+            upgradedRefs: 0,
+            upgradedVersions: 0,
+          },
+          steps: [{
+            id: "cleanup-data-tables",
+            label: "Cleanup legacy data tables",
+            ok: true,
+            changed: false,
+            summary: "Legacy data tables already clean",
+          }],
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          cleaned: [{ id: "bad" }],
+          stats: { removedVersions: 1, removedMaps: 2, reclaimedBytes: 3, remainingVersions: 4, remainingMaps: 5, remainingBytes: 6, upgradedRefs: 7, upgradedVersions: 2 },
+          steps: [
+            {
+              id: "compact-storage",
+              label: "Compact storage data",
+              ok: true,
+              changed: true,
+              summary: "Compacted storage records: 1 versions, 2 maps, 3 bytes reclaimed, upgraded 7 refs across 2 versions",
+            },
+            {
+              id: "cleanup-data-tables",
+              label: "Cleanup legacy data tables",
+              ok: true,
+              changed: true,
+              summary: "Removed 1 legacy data tables",
+              removedTables: ["sourceMaps"],
+            },
+          ],
+        }),
     };
     const handler = createRuntimeMessageHandler(deps);
     const popupStateResponse = vi.fn();
@@ -306,6 +428,7 @@ describe("background runtime handlers", () => {
 
     state.versionIndex = {};
     handler({ action: "cleanupData" }, {}, cleanupResponse);
+    await flushPromises();
     expect(cleanupResponse).toHaveBeenLastCalledWith({
       ok: true,
       cleaned: [],
@@ -316,7 +439,16 @@ describe("background runtime handlers", () => {
         remainingVersions: 0,
         remainingMaps: 0,
         remainingBytes: 0,
+        upgradedRefs: 0,
+        upgradedVersions: 0,
       },
+      steps: [{
+        id: "cleanup-data-tables",
+        label: "Cleanup legacy data tables",
+        ok: true,
+        changed: false,
+        summary: "Legacy data tables already clean",
+      }],
     });
 
     state.versionIndex = { v1: { id: "v1" } };
@@ -325,7 +457,24 @@ describe("background runtime handlers", () => {
     expect(cleanupResponse).toHaveBeenLastCalledWith({
       ok: true,
       cleaned: [{ id: "bad" }],
-      stats: { removedVersions: 1, removedMaps: 2, reclaimedBytes: 3, remainingVersions: 4, remainingMaps: 5, remainingBytes: 6 },
+      stats: { removedVersions: 1, removedMaps: 2, reclaimedBytes: 3, remainingVersions: 4, remainingMaps: 5, remainingBytes: 6, upgradedRefs: 7, upgradedVersions: 2 },
+      steps: [
+        {
+          id: "compact-storage",
+          label: "Compact storage data",
+          ok: true,
+          changed: true,
+          summary: "Compacted storage records: 1 versions, 2 maps, 3 bytes reclaimed, upgraded 7 refs across 2 versions",
+        },
+        {
+          id: "cleanup-data-tables",
+          label: "Cleanup legacy data tables",
+          ok: true,
+          changed: true,
+          summary: "Removed 1 legacy data tables",
+          removedTables: ["sourceMaps"],
+        },
+      ],
     });
 
     expect(handler({
@@ -388,6 +537,7 @@ describe("background runtime wiring and entry", () => {
 
     vi.doMock("../src/background/storage.mjs", () => ({
       broadcastSummary: vi.fn(),
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
       currentSettings: vi.fn(() => ({ detectionEnabled: true })),
       deletePageHistoryAndSessions: vi.fn(),
@@ -401,6 +551,7 @@ describe("background runtime wiring and entry", () => {
       prunePageHistory: vi.fn(),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
       saveSettings: vi.fn(),
       summarizePages: vi.fn(),
       totalStorageBytes: vi.fn(() => 0),

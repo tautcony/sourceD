@@ -15,10 +15,6 @@
     "message": "未知",
     "description": "未知值兜底文案"
   },
-  "commonFileCount": {
-    "message": "$1 个文件",
-    "description": "文件数量文案"
-  },
   "optionsPageTitle": {
     "message": "SourceD",
     "description": "设置页标题"
@@ -63,26 +59,6 @@
     "message": "权限说明",
     "description": "设置页章节标题"
   },
-  "optionsPermissionWebRequestBody": {
-    "message": "用于识别可能引用 source map 的 JavaScript 文件",
-    "description": "权限说明"
-  },
-  "optionsPermissionDownloadsBody": {
-    "message": "用于保存还原后的源码压缩包",
-    "description": "权限说明"
-  },
-  "optionsPermissionTabsBody": {
-    "message": "用于将检测结果关联到当前页面",
-    "description": "权限说明"
-  },
-  "optionsPermissionStorageBody": {
-    "message": "用于在本地保存 map 元数据",
-    "description": "权限说明"
-  },
-  "optionsPermissionHostsBody": {
-    "message": "因为 source map 可能托管在任意域名下",
-    "description": "权限说明"
-  },
   "optionsPrivacyTitle": {
     "message": "隐私说明",
     "description": "设置页章节标题"
@@ -114,62 +90,6 @@
   "optionsHistoryBody": {
     "message": "打开完整面板后，可按页面查看版本历史、展开文件树、查看数据分布，并调整清理设置。",
     "description": "历史面板说明"
-  },
-  "optionsDistributionTitle": {
-    "message": "数据分布",
-    "description": "分布章节标题"
-  },
-  "optionsSettingsTitle": {
-    "message": "设置项",
-    "description": "设置章节标题"
-  },
-  "optionsSettingRetentionDays": {
-    "message": "历史保留天数",
-    "description": "设置标签"
-  },
-  "optionsSettingMaxVersions": {
-    "message": "每个页面最多保留版本数",
-    "description": "设置标签"
-  },
-  "optionsSettingAutoCleanup": {
-    "message": "自动清理过旧历史",
-    "description": "设置标签"
-  },
-  "optionsSaveSettings": {
-    "message": "保存设置",
-    "description": "保存按钮"
-  },
-  "optionsSaving": {
-    "message": "保存中…",
-    "description": "保存状态"
-  },
-  "optionsSaved": {
-    "message": "已保存",
-    "description": "保存完成状态"
-  },
-  "optionsDeleteVersion": {
-    "message": "删除",
-    "description": "删除版本按钮"
-  },
-  "optionsVersionSeenAt": {
-    "message": "最近出现：$1",
-    "description": "版本最近出现时间"
-  },
-  "optionsVersionsUnit": {
-    "message": "个版本",
-    "description": "版本单位"
-  },
-  "optionsMapsUnit": {
-    "message": "个 map",
-    "description": "map 单位"
-  },
-  "optionsEmptyHistory": {
-    "message": "还没有历史数据。",
-    "description": "历史为空"
-  },
-  "optionsEmptyDistribution": {
-    "message": "还没有数据分布信息。",
-    "description": "分布为空"
   },
   "optionsOpenDashboard": {
     "message": "打开历史面板",
@@ -222,14 +142,6 @@
   "popupLatestVersion": {
     "message": "最新版本：$1",
     "description": "弹窗最新版本文案"
-  },
-  "popupLastUpdated": {
-    "message": "最后更新：$1",
-    "description": "最后更新时间提示"
-  },
-  "popupStorageSegTitle": {
-    "message": "$1  $2  ($3 个文件)",
-    "description": "站点存储分布提示"
   },
   "dashboardPageTitle": {
     "message": "SourceD 历史面板",
@@ -323,10 +235,6 @@
     "message": "保存设置",
     "description": "保存按钮"
   },
-  "dashboardSaving": {
-    "message": "保存中…",
-    "description": "保存状态"
-  },
   "dashboardSaved": {
     "message": "已保存",
     "description": "保存完成状态"
@@ -334,14 +242,6 @@
   "dashboardSaveFailed": {
     "message": "保存设置失败",
     "description": "保存失败状态"
-  },
-  "dashboardLoading": {
-    "message": "加载中…",
-    "description": "加载状态"
-  },
-  "dashboardLoadingVersion": {
-    "message": "正在加载版本详情…",
-    "description": "版本详情加载状态"
   },
   "dashboardEmptyHistory": {
     "message": "还没有历史数据。",
@@ -454,17 +354,5 @@
   "dashboardCleanup": {
     "message": "优化数据存储",
     "description": "清理按钮"
-  },
-  "dashboardCleanupDone": {
-    "message": "异常数据清理：$1 个版本",
-    "description": "异常数据清理结果消息"
-  },
-  "dashboardCleanupOptimized": {
-    "message": "存储优化：$1 个 map，释放 $2",
-    "description": "存储优化结果消息"
-  },
-  "dashboardCleanupNone": {
-    "message": "未发现异常数据，且无需进一步优化存储",
-    "description": "清理无需操作消息"
   }
 }

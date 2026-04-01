@@ -26,6 +26,49 @@ hljs.registerLanguage("json", json);
 
 const { Title, Text } = Typography;
 
+function cleanupStepStatus(step) {
+  if (step?.ok === false) return "Failed";
+  if (step?.changed) return "Changed";
+  return "OK";
+}
+
+function renderCleanupSummary(resp, fallbackError) {
+  const steps = Array.isArray(resp?.steps) ? resp.steps : [];
+  const cleaned = Array.isArray(resp?.cleaned) ? resp.cleaned : [];
+  const stats = resp?.stats || {};
+  const rows = [];
+
+  if (resp?.ok) {
+    rows.push(`Versions removed: ${Number(stats.removedVersions) || 0}`);
+    rows.push(`Maps removed: ${Number(stats.removedMaps) || 0}`);
+    rows.push(`Bytes reclaimed: ${fileSizeIEC(Number(stats.reclaimedBytes) || 0)}`);
+    rows.push(`Hash refs upgraded: ${Number(stats.upgradedRefs) || 0}`);
+    rows.push(`Version signatures upgraded: ${Number(stats.upgradedVersions) || 0}`);
+  } else {
+    rows.push(`Error: ${resp?.error || fallbackError}`);
+  }
+
+  if (cleaned.length) {
+    rows.push("Cleaned versions:");
+    cleaned.forEach((item) => {
+      rows.push(`- ${item.pageUrl} (${item.reason}, ${item.mapCount} maps)`);
+    });
+  }
+
+  if (steps.length) {
+    rows.push("Steps:");
+    steps.forEach((step) => {
+      rows.push(`- [${cleanupStepStatus(step)}] ${step.label || step.id}: ${step.summary || ""}`.trim());
+    });
+  }
+
+  return (
+    <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "'Menlo', 'Consolas', 'Courier New', monospace", fontSize: 12, lineHeight: 1.6 }}>
+      {rows.join("\n")}
+    </pre>
+  );
+}
+
 function guessLanguage(filename) {
   const ext = filename.split(".").pop()?.toLowerCase();
   const map = { js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript", ts: "typescript", tsx: "typescript", css: "css", scss: "css", less: "css", html: "xml", htm: "xml", svg: "xml", vue: "xml", json: "json" };
@@ -407,26 +450,46 @@ function ImportMapsModal({ open, importing, onCancel, onImport }) {
   const [title, setTitle] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const inputRef = useRef(null);
+  const pageUrlRef = useRef("");
+  const titleRef = useRef("");
+  const selectedFilesRef = useRef([]);
+
+  useEffect(() => {
+    pageUrlRef.current = pageUrl;
+  }, [pageUrl]);
+
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
+
+  useEffect(() => {
+    selectedFilesRef.current = selectedFiles;
+  }, [selectedFiles]);
 
   useEffect(() => {
     if (!open) {
       setPageUrl("");
       setTitle("");
       setSelectedFiles([]);
+      pageUrlRef.current = "";
+      titleRef.current = "";
+      selectedFilesRef.current = [];
       if (inputRef.current) inputRef.current.value = "";
     }
   }, [open]);
 
   const handleFileChange = useCallback((event) => {
     const nextFiles = Array.from(event.target.files || []);
+    selectedFilesRef.current = nextFiles;
     setSelectedFiles(nextFiles);
   }, []);
 
   const handleSubmit = useCallback(async () => {
-    const trimmedUrl = pageUrl.trim();
-    if (!trimmedUrl || !selectedFiles.length) return;
+    const trimmedUrl = pageUrlRef.current.trim();
+    const filesToImport = selectedFilesRef.current;
+    if (!trimmedUrl || !filesToImport.length) return;
 
-    const files = await Promise.all(selectedFiles.map(async (file) => {
+    const files = await Promise.all(filesToImport.map(async (file) => {
       const text = typeof file.text === "function"
         ? await file.text()
         : await new Promise((resolve, reject) => {
@@ -445,10 +508,10 @@ function ImportMapsModal({ open, importing, onCancel, onImport }) {
 
     onImport({
       pageUrl: trimmedUrl,
-      title: title.trim(),
+      title: titleRef.current.trim(),
       files,
     });
-  }, [onImport, pageUrl, selectedFiles, title]);
+  }, [onImport]);
 
   return (
     <Modal
@@ -517,7 +580,7 @@ function ImportMapsModal({ open, importing, onCancel, onImport }) {
 // ─── Main Dashboard App ─────────────────────────────────────────────────────────
 
 function DashboardContent() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(true);
   const [pages, setPages] = useState([]);
   const [distribution, setDistribution] = useState([]);
@@ -551,8 +614,14 @@ function DashboardContent() {
     setCleaning(true);
     chrome.runtime.sendMessage({ action: "cleanupData" }, (resp) => {
       setCleaning(false);
+      const steps = Array.isArray(resp?.steps) ? resp.steps : [];
+
       if (!resp?.ok) {
-        message.error(resp?.error || "Cleanup failed");
+        modal.error({
+          title: "Storage Cleanup Failed",
+          content: renderCleanupSummary(resp, "Cleanup failed"),
+          width: 720,
+        });
         return;
       } else {
         const details = (resp.cleaned || []).map((v) => `${v.pageUrl} (${v.reason}, ${v.mapCount} maps)`).join("\n");
@@ -562,25 +631,26 @@ function DashboardContent() {
         const removedMaps = Number(stats.removedMaps) || 0;
         const changed = reclaimedBytes > 0 || removedVersions > 0 || removedMaps > 0 || (resp.cleaned || []).length > 0;
 
-        if (changed) {
-          const cleanedCount = removedVersions || (resp.cleaned || []).length;
-          const content = `${i18nMessage("dashboardCleanupDone", [String(cleanedCount)])} · ${i18nMessage("dashboardCleanupOptimized", [String(removedMaps), fileSizeIEC(reclaimedBytes)])}`;
-          message.success({
-            content,
-            duration: 5,
-          });
-        } else {
-          message.info(i18nMessage("dashboardCleanupNone"));
-        }
+        modal.info({
+          title: changed ? "Storage Cleanup Completed" : "Storage Cleanup Checked",
+          content: renderCleanupSummary(resp, "Cleanup failed"),
+          width: 720,
+        });
 
         if (details) {
           console.info("[SourceD] Cleaned versions:\n" + details);
+        }
+        if (steps.length) {
+          console.info("[SourceD] Cleanup steps:\n" + steps.map((step) => {
+            const status = step.ok === false ? "FAILED" : step.changed ? "CHANGED" : "OK";
+            return `${status} ${step.label || step.id}: ${step.summary || ""}`.trim();
+          }).join("\n"));
         }
 
         loadData();
       }
     });
-  }, [loadData, message]);
+  }, [loadData, modal]);
 
   const groups = useMemo(() => groupPagesByDomain(pages), [pages]);
 

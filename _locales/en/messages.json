@@ -15,10 +15,6 @@
     "message": "Unknown",
     "description": "Fallback text when a value is unavailable"
   },
-  "commonFileCount": {
-    "message": "$1 files",
-    "description": "File count label"
-  },
   "optionsPageTitle": {
     "message": "SourceD",
     "description": "Options page title"
@@ -63,26 +59,6 @@
     "message": "Permissions",
     "description": "Options section title"
   },
-  "optionsPermissionWebRequestBody": {
-    "message": "to detect JavaScript files that may reference a source map",
-    "description": "Permission explanation"
-  },
-  "optionsPermissionDownloadsBody": {
-    "message": "to save recovered source archives",
-    "description": "Permission explanation"
-  },
-  "optionsPermissionTabsBody": {
-    "message": "to associate findings with the active page",
-    "description": "Permission explanation"
-  },
-  "optionsPermissionStorageBody": {
-    "message": "to keep map metadata and content locally",
-    "description": "Permission explanation"
-  },
-  "optionsPermissionHostsBody": {
-    "message": "because source maps may be hosted on any origin",
-    "description": "Permission explanation"
-  },
   "optionsPrivacyTitle": {
     "message": "Privacy",
     "description": "Options section title"
@@ -114,62 +90,6 @@
   "optionsHistoryBody": {
     "message": "Open the full dashboard to browse tracked pages, inspect version history, review storage distribution, and adjust cleanup settings.",
     "description": "Options dashboard description"
-  },
-  "optionsDistributionTitle": {
-    "message": "Data Distribution",
-    "description": "Options distribution section title"
-  },
-  "optionsSettingsTitle": {
-    "message": "Settings",
-    "description": "Options settings section title"
-  },
-  "optionsSettingRetentionDays": {
-    "message": "Retention Days",
-    "description": "Setting label"
-  },
-  "optionsSettingMaxVersions": {
-    "message": "Max Versions Per Page",
-    "description": "Setting label"
-  },
-  "optionsSettingAutoCleanup": {
-    "message": "Automatically prune old history",
-    "description": "Setting label"
-  },
-  "optionsSaveSettings": {
-    "message": "Save Settings",
-    "description": "Save button"
-  },
-  "optionsSaving": {
-    "message": "Saving...",
-    "description": "Saving status"
-  },
-  "optionsSaved": {
-    "message": "Saved",
-    "description": "Saved status"
-  },
-  "optionsDeleteVersion": {
-    "message": "Delete",
-    "description": "Delete version button"
-  },
-  "optionsVersionSeenAt": {
-    "message": "Seen at $1",
-    "description": "Version last seen text"
-  },
-  "optionsVersionsUnit": {
-    "message": "versions",
-    "description": "Versions unit"
-  },
-  "optionsMapsUnit": {
-    "message": "maps",
-    "description": "Maps unit"
-  },
-  "optionsEmptyHistory": {
-    "message": "No history yet.",
-    "description": "Empty history text"
-  },
-  "optionsEmptyDistribution": {
-    "message": "No data yet.",
-    "description": "Empty distribution text"
   },
   "optionsOpenDashboard": {
     "message": "Open History Dashboard",
@@ -222,14 +142,6 @@
   "popupLatestVersion": {
     "message": "Latest version: $1",
     "description": "Popup latest version label"
-  },
-  "popupLastUpdated": {
-    "message": "Last updated: $1",
-    "description": "Popup last updated tooltip"
-  },
-  "popupStorageSegTitle": {
-    "message": "$1  $2  ($3 files)",
-    "description": "Popup storage segment tooltip"
   },
   "dashboardPageTitle": {
     "message": "SourceD History",
@@ -323,10 +235,6 @@
     "message": "Save Settings",
     "description": "Dashboard save button"
   },
-  "dashboardSaving": {
-    "message": "Saving...",
-    "description": "Dashboard saving status"
-  },
   "dashboardSaved": {
     "message": "Saved",
     "description": "Dashboard saved status"
@@ -334,14 +242,6 @@
   "dashboardSaveFailed": {
     "message": "Failed to save settings",
     "description": "Dashboard failed save status"
-  },
-  "dashboardLoading": {
-    "message": "Loading...",
-    "description": "Dashboard loading"
-  },
-  "dashboardLoadingVersion": {
-    "message": "Loading version details...",
-    "description": "Dashboard loading version details"
   },
   "dashboardEmptyHistory": {
     "message": "No history yet.",
@@ -454,17 +354,5 @@
   "dashboardCleanup": {
     "message": "Optimize Storage",
     "description": "Dashboard cleanup button"
-  },
-  "dashboardCleanupDone": {
-    "message": "Abnormal data cleaned: $1 versions",
-    "description": "Dashboard abnormal cleanup result message"
-  },
-  "dashboardCleanupOptimized": {
-    "message": "Storage optimized: $1 maps, $2 reclaimed",
-    "description": "Dashboard storage optimization result message"
-  },
-  "dashboardCleanupNone": {
-    "message": "No abnormal data found and no storage optimization was needed",
-    "description": "Dashboard cleanup nothing to clean message"
   }
 }

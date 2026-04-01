@@ -54,7 +54,7 @@ describe("background sourceMaps", () => {
   });
 
   it("covers fetcher guard rails and error branches", async () => {
-    const state = { pendingSourceMapFetches: new Set() };
+    const state = { pendingSourceMapFetches: new Map() };
     const callback = vi.fn();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -113,7 +113,7 @@ describe("background sourceMaps", () => {
   });
 
   it("honours custom fetchDelayMs, fetchTimeoutMs, and maxMapBytes from getSettings", async () => {
-    const state = { pendingSourceMapFetches: new Set() };
+    const state = { pendingSourceMapFetches: new Map() };
     const callback = vi.fn();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -151,5 +151,36 @@ describe("background sourceMaps", () => {
     fetchSourceMap("https://example.com/stall-custom.js", callback);
     await vi.advanceTimersByTimeAsync(600);
     expect(warn).toHaveBeenCalledWith("[SourceD] js fetch error:", expect.anything());
+  });
+
+  it("fans out a shared fetch result to all concurrent waiters", async () => {
+    const state = { pendingSourceMapFetches: new Map() };
+    const callbackA = vi.fn();
+    const callbackB = vi.fn();
+
+    globalThis.fetch = vi.fn((url) => {
+      if (url.endsWith(".js")) {
+        return Promise.resolve({
+          ok: true,
+          headers: { get: () => "64" },
+          text: () => Promise.resolve("//# sourceMappingURL=./app.js.map"),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        headers: { get: () => "32" },
+        text: () => Promise.resolve('{"version":3,"sources":["a"],"sourcesContent":["b"]}'),
+      });
+    });
+
+    const fetchSourceMap = createSourceMapFetcher(state);
+    fetchSourceMap("https://example.com/app.js", callbackA);
+    fetchSourceMap("https://example.com/app.js", callbackB);
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(callbackA).toHaveBeenCalledWith("https://example.com/app.js.map", '{"version":3,"sources":["a"],"sourcesContent":["b"]}');
+    expect(callbackB).toHaveBeenCalledWith("https://example.com/app.js.map", '{"version":3,"sources":["a"],"sourcesContent":["b"]}');
+    expect(state.pendingSourceMapFetches.size).toBe(0);
   });
 });

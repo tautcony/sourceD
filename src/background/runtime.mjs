@@ -8,6 +8,7 @@ import {
 } from "./shared.mjs";
 import {
   broadcastSummary,
+  cleanupLegacyDataTables,
   compactStorageData,
   currentSettings,
   deletePageHistoryAndSessions,
@@ -21,6 +22,7 @@ import {
   prunePageHistory,
   pushSummary,
   removeVersionsFromIndexes,
+  runCleanupTasks,
   saveSettings,
   summarizePages,
   totalStorageBytes,
@@ -77,8 +79,10 @@ export function registerRuntimeListeners() {
     deletePageHistoryAndSessions,
     deleteSiteHistoryAndSessions,
     compactStorageData,
+    cleanupLegacyDataTables,
     importSourceMapsForPage,
     isValidSourceMap,
+    runCleanupTasks,
   });
 
   chrome.tabs.onRemoved.addListener((tabId) => {
