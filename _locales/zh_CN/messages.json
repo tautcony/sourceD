@@ -303,6 +303,22 @@
     "message": "自动清理过旧历史",
     "description": "设置标签"
   },
+  "dashboardSettingDetectionEnabled": {
+    "message": "启用源映射检测",
+    "description": "设置标签"
+  },
+  "dashboardSettingFetchDelayMs": {
+    "message": "抓取延迟（毫秒）",
+    "description": "设置标签"
+  },
+  "dashboardSettingFetchTimeoutMs": {
+    "message": "抓取超时（毫秒）",
+    "description": "设置标签"
+  },
+  "dashboardSettingMaxMapBytes": {
+    "message": "最大 Source Map 体积（字节）",
+    "description": "设置标签"
+  },
   "dashboardSaveSettings": {
     "message": "保存设置",
     "description": "保存按钮"

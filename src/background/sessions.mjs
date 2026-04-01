@@ -18,7 +18,7 @@ import {
 } from "./storage.mjs";
 import { createSourceMapFetcher } from "./sourceMaps.mjs";
 
-export function buildSessionArtifacts(session) {
+export async function buildSessionArtifacts(session) {
   const siteKey = pageSiteKey(session.pageUrl);
   const mapUrls = Object.keys(session.maps).sort();
   const refs = [];
@@ -26,9 +26,9 @@ export function buildSessionArtifacts(session) {
   let byteSize = 0;
   const createdAt = new Date().toISOString();
 
-  mapUrls.forEach((mapUrl) => {
+  for (const mapUrl of mapUrls) {
     const content = session.maps[mapUrl];
-    const mapHash = hashString(content);
+    const mapHash = await hashString(content);
     const blobId = blobStoreKey(siteKey, mapHash);
     if (blobs[blobId] && blobs[blobId].content !== content) {
       throw new Error(`hash collision detected for ${mapUrl}`);
@@ -53,7 +53,7 @@ export function buildSessionArtifacts(session) {
         refCount: 0,
       };
     }
-  });
+  }
 
   return {
     siteKey,
@@ -86,74 +86,75 @@ export function buildMetaForSession(session, artifacts, versionId) {
 }
 
 export function upsertSessionVersion(session) {
-  const artifacts = buildSessionArtifacts(session);
-  if (!artifacts.signature) return Promise.resolve();
+  return buildSessionArtifacts(session).then((artifacts) => {
+    if (!artifacts.signature) return;
 
-  if (session.versionId && session.versionOwned && session.signature === artifacts.signature) {
-    const stableMeta = state.versionIndex[session.versionId];
-    if (stableMeta) {
-      refreshBadgeForTab(session.tabId, session.pageUrl);
-      return Promise.resolve();
+    if (session.versionId && session.versionOwned && session.signature === artifacts.signature) {
+      const stableMeta = state.versionIndex[session.versionId];
+      if (stableMeta) {
+        refreshBadgeForTab(session.tabId, session.pageUrl);
+        return;
+      }
     }
-  }
 
-  if (session.versionId && session.versionOwned) {
-    const previousMeta = state.versionIndex[session.versionId];
-    const updatedMeta = buildMetaForSession(session, artifacts, session.versionId);
-    return persistVersionState(updatedMeta, artifacts.refs, artifacts.blobs, previousMeta)
-      .then(() => sortPageVersions(session.pageUrl))
+    if (session.versionId && session.versionOwned) {
+      const previousMeta = state.versionIndex[session.versionId];
+      const updatedMeta = buildMetaForSession(session, artifacts, session.versionId);
+      return persistVersionState(updatedMeta, artifacts.refs, artifacts.blobs, previousMeta)
+        .then(() => sortPageVersions(session.pageUrl))
+        .then(() => {
+          if (currentSettings().autoCleanup) return prunePageHistory(session.pageUrl);
+          return null;
+        })
+        .then(() => {
+          session.signature = artifacts.signature;
+          refreshBadgeForTab(session.tabId, session.pageUrl);
+          broadcastSummary();
+        });
+    }
+
+    const matchingId = ensurePageBucket(session.pageUrl).find((id) => {
+      return state.versionIndex[id] && state.versionIndex[id].signature === artifacts.signature;
+    });
+
+    if (matchingId) {
+      const previousMeta = state.versionIndex[matchingId];
+      const nextMeta = Object.assign({}, previousMeta, {
+        title: session.title,
+        lastSeenAt: new Date().toISOString(),
+        tabId: session.tabId,
+      });
+
+      return persistVersionState(nextMeta, artifacts.refs, artifacts.blobs, previousMeta)
+        .then(() => sortPageVersions(session.pageUrl))
+        .then(() => {
+          session.versionId = matchingId;
+          session.versionOwned = false;
+          session.signature = artifacts.signature;
+          refreshBadgeForTab(session.tabId, session.pageUrl);
+          broadcastSummary();
+        });
+    }
+
+    const newId = `${session.pageUrl}::${Date.now()}::${Math.random().toString(36).slice(2, 8)}`;
+    const meta = buildMetaForSession(session, artifacts, newId);
+
+    return persistVersionState(meta, artifacts.refs, artifacts.blobs, null)
       .then(() => {
+        session.versionId = newId;
+        session.versionOwned = true;
+        session.signature = artifacts.signature;
+        ensurePageBucket(session.pageUrl).unshift(newId);
+        state.versionIndex[newId] = meta;
+        sortPageVersions(session.pageUrl);
         if (currentSettings().autoCleanup) return prunePageHistory(session.pageUrl);
         return null;
       })
       .then(() => {
-        session.signature = artifacts.signature;
         refreshBadgeForTab(session.tabId, session.pageUrl);
         broadcastSummary();
       });
-  }
-
-  const matchingId = ensurePageBucket(session.pageUrl).find((id) => {
-    return state.versionIndex[id] && state.versionIndex[id].signature === artifacts.signature;
   });
-
-  if (matchingId) {
-    const previousMeta = state.versionIndex[matchingId];
-    const nextMeta = Object.assign({}, previousMeta, {
-      title: session.title,
-      lastSeenAt: new Date().toISOString(),
-      tabId: session.tabId,
-    });
-
-    return persistVersionState(nextMeta, artifacts.refs, artifacts.blobs, previousMeta)
-      .then(() => sortPageVersions(session.pageUrl))
-      .then(() => {
-        session.versionId = matchingId;
-        session.versionOwned = false;
-        session.signature = artifacts.signature;
-        refreshBadgeForTab(session.tabId, session.pageUrl);
-        broadcastSummary();
-      });
-  }
-
-  const newId = `${session.pageUrl}::${Date.now()}::${Math.random().toString(36).slice(2, 8)}`;
-  const meta = buildMetaForSession(session, artifacts, newId);
-
-  return persistVersionState(meta, artifacts.refs, artifacts.blobs, null)
-    .then(() => {
-      session.versionId = newId;
-      session.versionOwned = true;
-      session.signature = artifacts.signature;
-      ensurePageBucket(session.pageUrl).unshift(newId);
-      state.versionIndex[newId] = meta;
-      sortPageVersions(session.pageUrl);
-      if (currentSettings().autoCleanup) return prunePageHistory(session.pageUrl);
-      return null;
-    })
-    .then(() => {
-      refreshBadgeForTab(session.tabId, session.pageUrl);
-      broadcastSummary();
-    });
 }
 
 export function scheduleSessionPersist(session) {
@@ -198,7 +199,7 @@ export function cleanupTabSession(tabId) {
   delete state.tabSessions[tabId];
 }
 
-export const fetchSourceMap = createSourceMapFetcher(state);
+export const fetchSourceMap = createSourceMapFetcher(state, () => currentSettings());
 
 export function isValidSourceMap(raw) {
   try {

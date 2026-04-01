@@ -175,6 +175,22 @@ describe("background shared helpers", () => {
       refCount: 2,
     });
   });
+
+  it("hashString returns a 64-char hex SHA-256 digest", async () => {
+    const shared = await import("../src/background/shared.mjs");
+
+    const hash = await shared.hashString("hello");
+    expect(typeof hash).toBe("string");
+    expect(hash).toHaveLength(64);
+    expect(/^[0-9a-f]{64}$/.test(hash)).toBe(true);
+
+    const hash2 = await shared.hashString("hello");
+    expect(hash2).toBe(hash);
+
+    const hashOther = await shared.hashString("world");
+    expect(hashOther).not.toBe(hash);
+    expect(hashOther).toHaveLength(64);
+  });
 });
 
 describe("background session helpers", () => {
@@ -213,6 +229,7 @@ describe("background session helpers", () => {
     shared.state.versionsByPage = { "https://example.com/app": ["owned"] };
     shared.state.tabSessions = {};
 
+    const mapHash = await shared.hashString("map-content");
     const stableSession = {
       tabId: 1,
       pageUrl: "https://example.com/app",
@@ -220,7 +237,7 @@ describe("background session helpers", () => {
       maps: { "https://example.com/app.js.map": "map-content" },
       versionId: "owned",
       versionOwned: true,
-      signature: "https://example.com/app.js.map#" + shared.hashString("map-content"),
+      signature: "https://example.com/app.js.map#" + mapHash,
       timer: null,
     };
     await sessions.upsertSessionVersion(stableSession);
@@ -360,6 +377,13 @@ describe("background session helpers", () => {
 
     shared.state.storageCompactionInProgress = false;
     await vi.advanceTimersByTimeAsync(1400);
+    // advanceTimersByTimeAsync fires the timer but does not await the full async
+    // chain inside the timer callback (hashString + persistVersionState rejection).
+    // Three additional microtask-flush rounds ensure the SHA-256 digest resolves,
+    // buildSessionArtifacts completes, persistVersionState rejects, and the .catch()
+    // handler runs – so console.warn is recorded before the assertion.
+    await flushPromises();
+    await flushPromises();
     await flushPromises();
     expect(warn).toHaveBeenCalledWith("[SourceD] version save failed:", "persist failed");
     vi.useRealTimers();
@@ -430,6 +454,9 @@ describe("background storage helpers", () => {
       maxVersionsPerPage: 10,
       autoCleanup: true,
       detectionEnabled: true,
+      fetchDelayMs: 300,
+      fetchTimeoutMs: 30_000,
+      maxMapBytes: 50 * 1024 * 1024,
     });
 
     await storage.saveSettings({ detectionEnabled: false });

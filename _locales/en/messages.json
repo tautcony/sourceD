@@ -303,6 +303,22 @@
     "message": "Automatically prune old history",
     "description": "Dashboard setting label"
   },
+  "dashboardSettingDetectionEnabled": {
+    "message": "Enable source map detection",
+    "description": "Dashboard setting label"
+  },
+  "dashboardSettingFetchDelayMs": {
+    "message": "Fetch Delay (ms)",
+    "description": "Dashboard setting label"
+  },
+  "dashboardSettingFetchTimeoutMs": {
+    "message": "Fetch Timeout (ms)",
+    "description": "Dashboard setting label"
+  },
+  "dashboardSettingMaxMapBytes": {
+    "message": "Max Map Size (bytes)",
+    "description": "Dashboard setting label"
+  },
   "dashboardSaveSettings": {
     "message": "Save Settings",
     "description": "Dashboard save button"

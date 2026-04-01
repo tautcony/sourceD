@@ -331,16 +331,16 @@ export function currentSettings() {
   return state.settings || DEFAULT_SETTINGS;
 }
 
-export function importSourceMapsForPage(payload) {
+export async function importSourceMapsForPage(payload) {
   const pageUrl = canonicalPageUrl(payload && payload.pageUrl ? payload.pageUrl : "");
   const title = payload && payload.title ? String(payload.title).trim() : "";
   const files = Array.isArray(payload && payload.files) ? payload.files : [];
 
   if (!pageUrl) {
-    return Promise.reject(new Error("pageUrl is required"));
+    throw new Error("pageUrl is required");
   }
   if (!files.length) {
-    return Promise.reject(new Error("No source map files were provided"));
+    throw new Error("No source map files were provided");
   }
 
   const siteKey = pageSiteKey(pageUrl);
@@ -349,42 +349,43 @@ export function importSourceMapsForPage(payload) {
   const blobs = {};
   let byteSize = 0;
 
-  files
+  const sortedFiles = files
     .slice()
-    .sort((a, b) => String(a.mapUrl || "").localeCompare(String(b.mapUrl || "")))
-    .forEach((file) => {
-      const mapUrl = String(file.mapUrl || "").trim();
-      const content = typeof file.content === "string" ? file.content : "";
-      if (!mapUrl || !content) return;
+    .sort((a, b) => String(a.mapUrl || "").localeCompare(String(b.mapUrl || "")));
 
-      const mapHash = hashString(content);
-      const blobId = blobStoreKey(siteKey, mapHash);
-      byteSize += content.length;
+  for (const file of sortedFiles) {
+    const mapUrl = String(file.mapUrl || "").trim();
+    const content = typeof file.content === "string" ? file.content : "";
+    if (!mapUrl || !content) continue;
 
-      refs.push({
-        versionId: "",
-        mapUrl,
-        siteKey,
-        mapHash,
-        blobId,
-        byteSize: content.length,
-      });
+    const mapHash = await hashString(content);
+    const blobId = blobStoreKey(siteKey, mapHash);
+    byteSize += content.length;
 
-      if (!blobs[blobId]) {
-        blobs[blobId] = {
-          id: blobId,
-          siteKey,
-          mapHash,
-          byteSize: content.length,
-          content,
-          createdAt: now,
-          refCount: 0,
-        };
-      }
+    refs.push({
+      versionId: "",
+      mapUrl,
+      siteKey,
+      mapHash,
+      blobId,
+      byteSize: content.length,
     });
 
+    if (!blobs[blobId]) {
+      blobs[blobId] = {
+        id: blobId,
+        siteKey,
+        mapHash,
+        byteSize: content.length,
+        content,
+        createdAt: now,
+        refCount: 0,
+      };
+    }
+  }
+
   if (!refs.length) {
-    return Promise.reject(new Error("No valid source map files were provided"));
+    throw new Error("No valid source map files were provided");
   }
 
   const signature = buildSignatureFromRefs(refs);
@@ -393,13 +394,13 @@ export function importSourceMapsForPage(payload) {
   });
 
   if (existingId) {
-    return Promise.resolve({
+    return {
       ok: true,
       reusedExisting: true,
       versionId: existingId,
       importedCount: refs.length,
       skippedCount: Math.max(0, files.length - refs.length),
-    });
+    };
   }
 
   const versionId = `${pageUrl}::${Date.now()}::${Math.random().toString(36).slice(2, 8)}`;
@@ -418,24 +419,19 @@ export function importSourceMapsForPage(payload) {
     tabId: null,
   };
 
-  return persistVersionState(meta, refs, blobs, null)
-    .then(() => {
-      ensurePageBucket(pageUrl).unshift(versionId);
-      state.versionIndex[versionId] = meta;
-      sortPageVersions(pageUrl);
-      if (currentSettings().autoCleanup) return prunePageHistory(pageUrl);
-      return null;
-    })
-    .then(() => {
-      refreshBadgeForActiveTab();
-      return {
-        ok: true,
-        reusedExisting: false,
-        versionId,
-        importedCount: refs.length,
-        skippedCount: Math.max(0, files.length - refs.length),
-      };
-    });
+  await persistVersionState(meta, refs, blobs, null);
+  ensurePageBucket(pageUrl).unshift(versionId);
+  state.versionIndex[versionId] = meta;
+  sortPageVersions(pageUrl);
+  if (currentSettings().autoCleanup) await prunePageHistory(pageUrl);
+  refreshBadgeForActiveTab();
+  return {
+    ok: true,
+    reusedExisting: false,
+    versionId,
+    importedCount: refs.length,
+    skippedCount: Math.max(0, files.length - refs.length),
+  };
 }
 
 export function pushSummary(port) {
@@ -483,7 +479,7 @@ export function prunePageHistory(pageUrl) {
 }
 
 export function buildCompactedStorageState(db, metas) {
-  return Promise.all([loadStoredMapEntriesRaw(db, metas), listAllBlobsRaw(db)]).then((results) => {
+  return Promise.all([loadStoredMapEntriesRaw(db, metas), listAllBlobsRaw(db)]).then(async (results) => {
     const entries = results[0];
     const existingBlobs = results[1];
     const existingBlobMap = {};
@@ -496,7 +492,7 @@ export function buildCompactedStorageState(db, metas) {
       existingBlobMap[blob.id] = blob;
     });
 
-    entries.forEach((entry) => {
+    for (const entry of entries) {
       const meta = entry.meta;
       const siteKey = meta.siteKey || pageSiteKey(meta.pageUrl);
       const value = entry.value;
@@ -506,7 +502,7 @@ export function buildCompactedStorageState(db, metas) {
 
       if (typeof value === "string") {
         content = value;
-        mapHash = hashString(content);
+        mapHash = await hashString(content);
         blobId = blobStoreKey(siteKey, mapHash);
       } else if (value) {
         mapHash = value.mapHash || null;
@@ -517,10 +513,10 @@ export function buildCompactedStorageState(db, metas) {
       }
 
       if (content == null) {
-        return;
+        continue;
       }
 
-      if (!mapHash) mapHash = hashString(content);
+      if (!mapHash) mapHash = await hashString(content);
       if (!blobId) blobId = blobStoreKey(siteKey, mapHash);
       validRefsByVersion[meta.id] = (validRefsByVersion[meta.id] || 0) + 1;
 
@@ -548,7 +544,7 @@ export function buildCompactedStorageState(db, metas) {
         };
       }
       desiredBlobs[blobId].refCount++;
-    });
+    }
 
     metas.forEach((meta) => {
       if ((validRefsByVersion[meta.id] || 0) > 0) return;
