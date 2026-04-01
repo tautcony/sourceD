@@ -454,6 +454,9 @@ describe("background storage helpers", () => {
       maxVersionsPerPage: 10,
       autoCleanup: true,
       detectionEnabled: true,
+      fetchDelayMs: 300,
+      fetchTimeoutMs: 30_000,
+      maxMapBytes: 50 * 1024 * 1024,
     });
 
     await storage.saveSettings({ detectionEnabled: false });

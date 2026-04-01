@@ -10,6 +10,9 @@ export const DEFAULT_SETTINGS = {
   maxVersionsPerPage: 10,
   autoCleanup: true,
   detectionEnabled: true,
+  fetchDelayMs: 300,
+  fetchTimeoutMs: 30_000,
+  maxMapBytes: 50 * 1024 * 1024,
 };
 
 export const state = {

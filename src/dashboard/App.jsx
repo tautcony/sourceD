@@ -339,6 +339,9 @@ function SettingsSection({ settings, onReload }) {
         maxVersionsPerPage: settings.maxVersionsPerPage,
         autoCleanup: !!settings.autoCleanup,
         detectionEnabled: settings.detectionEnabled !== false,
+        fetchDelayMs: settings.fetchDelayMs,
+        fetchTimeoutMs: settings.fetchTimeoutMs,
+        maxMapBytes: settings.maxMapBytes,
       });
     }
   }, [settings, form]);
@@ -352,6 +355,9 @@ function SettingsSection({ settings, onReload }) {
         maxVersionsPerPage: Number(values.maxVersionsPerPage) || 10,
         autoCleanup: !!values.autoCleanup,
         detectionEnabled: values.detectionEnabled !== false,
+        fetchDelayMs: Number(values.fetchDelayMs) || 300,
+        fetchTimeoutMs: Number(values.fetchTimeoutMs) || 30_000,
+        maxMapBytes: Number(values.maxMapBytes) || 50 * 1024 * 1024,
       },
     }, (resp) => {
       setSaving(false);
@@ -377,6 +383,15 @@ function SettingsSection({ settings, onReload }) {
       </Form.Item>
       <Form.Item name="detectionEnabled" valuePropName="checked">
         <Switch checkedChildren={i18nMessage("dashboardSettingDetectionEnabled")} unCheckedChildren={i18nMessage("dashboardSettingDetectionEnabled")} />
+      </Form.Item>
+      <Form.Item label={i18nMessage("dashboardSettingFetchDelayMs")} name="fetchDelayMs">
+        <InputNumber min={0} max={5000} style={{ width: "100%" }} />
+      </Form.Item>
+      <Form.Item label={i18nMessage("dashboardSettingFetchTimeoutMs")} name="fetchTimeoutMs">
+        <InputNumber min={500} max={120_000} style={{ width: "100%" }} />
+      </Form.Item>
+      <Form.Item label={i18nMessage("dashboardSettingMaxMapBytes")} name="maxMapBytes">
+        <InputNumber min={1024 * 1024} max={500 * 1024 * 1024} style={{ width: "100%" }} />
       </Form.Item>
       <Form.Item>
         <Button type="primary" htmlType="submit" loading={saving}>
@@ -518,7 +533,7 @@ function DashboardContent() {
       setLoading(false);
       setPages(data?.pages || []);
       setDistribution(data?.distribution || []);
-      setSettings(data?.settings || { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true });
+      setSettings(data?.settings || { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30_000, maxMapBytes: 50 * 1024 * 1024 });
       setTotalVersions(data?.totalVersions || 0);
       setTotalStorageBytes(data?.totalStorageBytes || 0);
     });

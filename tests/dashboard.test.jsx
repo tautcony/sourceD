@@ -50,7 +50,7 @@ function mockDashboardData(data, extraHandlers = {}) {
       cb({
         pages: data.pages || [],
         distribution: data.distribution || [],
-        settings: data.settings || { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true },
+        settings: data.settings || { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 },
         totalVersions: data.totalVersions || 0,
         totalStorageBytes: data.totalStorageBytes || 0,
       });
@@ -355,7 +355,7 @@ describe("DashboardApp", () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     chrome.runtime.sendMessage = vi.fn((msg, cb) => {
       if (msg.action === "getDashboardData") {
-        cb({ pages: mockPages, distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true }, totalVersions: 1, totalStorageBytes: 1024 });
+        cb({ pages: mockPages, distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 }, totalVersions: 1, totalStorageBytes: 1024 });
       } else if (msg.action === "cleanupData") {
         cb({ ok: true, cleaned: [] });
       } else {
@@ -374,7 +374,7 @@ describe("DashboardApp", () => {
   it("handles cleanup with items cleaned", async () => {
     chrome.runtime.sendMessage = vi.fn((msg, cb) => {
       if (msg.action === "getDashboardData") {
-        cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true }, totalVersions: 0, totalStorageBytes: 0 });
+        cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 }, totalVersions: 0, totalStorageBytes: 0 });
       } else if (msg.action === "cleanupData") {
         cb({
           ok: true,
@@ -399,7 +399,7 @@ describe("DashboardApp", () => {
   it("handles cleanup failure", async () => {
     chrome.runtime.sendMessage = vi.fn((msg, cb) => {
       if (msg.action === "getDashboardData") {
-        cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true }, totalVersions: 0, totalStorageBytes: 0 });
+        cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 }, totalVersions: 0, totalStorageBytes: 0 });
       } else if (msg.action === "cleanupData") {
         cb({ ok: false, error: "cleanup exploded" });
       } else {
@@ -417,7 +417,7 @@ describe("DashboardApp", () => {
   it("uses cleanup fallback error message when response has no error", async () => {
     chrome.runtime.sendMessage = vi.fn((msg, cb) => {
       if (msg.action === "getDashboardData") {
-        cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true }, totalVersions: 0, totalStorageBytes: 0 });
+        cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 }, totalVersions: 0, totalStorageBytes: 0 });
       } else if (msg.action === "cleanupData") {
         cb({ ok: false });
       } else {
@@ -435,7 +435,7 @@ describe("DashboardApp", () => {
   it("uses cleaned item count when cleanup stats are missing", async () => {
     chrome.runtime.sendMessage = vi.fn((msg, cb) => {
       if (msg.action === "getDashboardData") {
-        cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true }, totalVersions: 0, totalStorageBytes: 0 });
+        cb({ pages: [], distribution: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 }, totalVersions: 0, totalStorageBytes: 0 });
       } else if (msg.action === "cleanupData") {
         cb({
           ok: true,
@@ -848,7 +848,7 @@ describe("DashboardApp", () => {
   });
 
   it("saves settings including detectionEnabled when form is submitted", async () => {
-    mockDashboardData({ pages: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true }, totalVersions: 0, totalStorageBytes: 0 });
+    mockDashboardData({ pages: [], settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 }, totalVersions: 0, totalStorageBytes: 0 });
     render(<DashboardApp />);
     await screen.findByText("No history yet.");
 
@@ -1092,7 +1092,7 @@ describe("DashboardApp", () => {
       if (msg.action === "getDashboardData") {
         cb({
           pages: mockPages, distribution: [], totalVersions: 1, totalStorageBytes: 1024,
-          settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true },
+          settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 },
         });
       } else if (msg.action === "getVersionFiles") {
         cb({ ok: false });
@@ -1213,7 +1213,7 @@ describe("DashboardApp", () => {
       if (msg.action === "getDashboardData") {
         cb({
           pages: mockPages, distribution: [], totalVersions: 1, totalStorageBytes: 1024,
-          settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true },
+          settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 },
         });
       } else if (msg.action === "getVersionFiles") {
         cb({ ok: true }); // no files field — triggers resp.files || [] fallback

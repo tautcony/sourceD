@@ -199,7 +199,7 @@ export function cleanupTabSession(tabId) {
   delete state.tabSessions[tabId];
 }
 
-export const fetchSourceMap = createSourceMapFetcher(state);
+export const fetchSourceMap = createSourceMapFetcher(state, () => currentSettings());
 
 export function isValidSourceMap(raw) {
   try {
