@@ -546,7 +546,7 @@ describe("session persistence regressions", () => {
     const sessions = await import("../src/background/sessions.mjs");
     const storage = await import("../src/background/storage.mjs");
     const mapContent = "hello world";
-    const mapHash = shared.hashString(mapContent);
+    const mapHash = await shared.hashString(mapContent);
 
     shared.state.versionIndex = {
       existing: {
@@ -690,13 +690,13 @@ describe("session persistence regressions", () => {
 
     const sessions = await import("../src/background/sessions.mjs");
 
-    expect(() => sessions.buildSessionArtifacts({
+    await expect(sessions.buildSessionArtifacts({
       pageUrl: "https://example.com/app",
       maps: {
         "https://example.com/a.map": "first",
         "https://example.com/b.map": "second",
       },
-    })).toThrow("hash collision detected");
+    })).rejects.toThrow("hash collision detected");
   });
 
   it("defers session persistence while storage compaction is in progress", async () => {

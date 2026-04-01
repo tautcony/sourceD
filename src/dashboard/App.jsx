@@ -338,6 +338,7 @@ function SettingsSection({ settings, onReload }) {
         retentionDays: settings.retentionDays,
         maxVersionsPerPage: settings.maxVersionsPerPage,
         autoCleanup: !!settings.autoCleanup,
+        detectionEnabled: settings.detectionEnabled !== false,
       });
     }
   }, [settings, form]);
@@ -350,6 +351,7 @@ function SettingsSection({ settings, onReload }) {
         retentionDays: Number(values.retentionDays) || 30,
         maxVersionsPerPage: Number(values.maxVersionsPerPage) || 10,
         autoCleanup: !!values.autoCleanup,
+        detectionEnabled: values.detectionEnabled !== false,
       },
     }, (resp) => {
       setSaving(false);
@@ -372,6 +374,9 @@ function SettingsSection({ settings, onReload }) {
       </Form.Item>
       <Form.Item name="autoCleanup" valuePropName="checked">
         <Switch checkedChildren={i18nMessage("dashboardSettingAutoCleanup")} unCheckedChildren={i18nMessage("dashboardSettingAutoCleanup")} />
+      </Form.Item>
+      <Form.Item name="detectionEnabled" valuePropName="checked">
+        <Switch checkedChildren={i18nMessage("dashboardSettingDetectionEnabled")} unCheckedChildren={i18nMessage("dashboardSettingDetectionEnabled")} />
       </Form.Item>
       <Form.Item>
         <Button type="primary" htmlType="submit" loading={saving}>
@@ -513,7 +518,7 @@ function DashboardContent() {
       setLoading(false);
       setPages(data?.pages || []);
       setDistribution(data?.distribution || []);
-      setSettings(data?.settings || { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true });
+      setSettings(data?.settings || { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true });
       setTotalVersions(data?.totalVersions || 0);
       setTotalStorageBytes(data?.totalStorageBytes || 0);
     });

@@ -303,6 +303,10 @@
     "message": "Automatically prune old history",
     "description": "Dashboard setting label"
   },
+  "dashboardSettingDetectionEnabled": {
+    "message": "Enable source map detection",
+    "description": "Dashboard setting label"
+  },
   "dashboardSaveSettings": {
     "message": "Save Settings",
     "description": "Dashboard save button"

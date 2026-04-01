@@ -62,18 +62,10 @@ export function pageSiteKey(url) {
   }
 }
 
-export function hashString(input) {
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash +=
-      (hash << 1) +
-      (hash << 4) +
-      (hash << 7) +
-      (hash << 8) +
-      (hash << 24);
-  }
-  return (hash >>> 0).toString(16);
+export async function hashString(input) {
+  const encoded = new TextEncoder().encode(input);
+  const buffer = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export function blobStoreKey(siteKey, mapHash) {

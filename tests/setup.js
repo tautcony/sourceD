@@ -1,4 +1,23 @@
 import "@testing-library/jest-dom/vitest";
+import { createHash } from "node:crypto";
+
+// Patch crypto.subtle.digest to use Node's synchronous createHash so it resolves
+// as a microtask instead of via the libuv thread pool. This makes fake-timer
+// tests deterministic regardless of system load.
+if (globalThis.crypto?.subtle) {
+  const _origDigest = globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle);
+  globalThis.crypto.subtle.digest = (algorithm, data) => {
+    const algoName = (typeof algorithm === "string" ? algorithm : algorithm.name).toUpperCase();
+    if (algoName === "SHA-256") {
+      const view = ArrayBuffer.isView(data)
+        ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+        : Buffer.from(data);
+      const result = createHash("sha256").update(view).digest();
+      return Promise.resolve(result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength));
+    }
+    return _origDigest(algorithm, data);
+  };
+}
 
 // Mock window.matchMedia (required by antd)
 Object.defineProperty(window, "matchMedia", {
@@ -71,6 +90,7 @@ globalThis.chrome = {
         dashboardSettingRetentionDays: "Retention Days",
         dashboardSettingMaxVersions: "Max Versions Per Page",
         dashboardSettingAutoCleanup: "Automatically prune old history",
+        dashboardSettingDetectionEnabled: "Enable source map detection",
         dashboardSaveSettings: "Save Settings",
         dashboardSaved: "Saved",
         dashboardSaveFailed: "Failed to save settings",
