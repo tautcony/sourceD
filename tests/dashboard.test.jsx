@@ -219,6 +219,10 @@ describe("DashboardApp", () => {
       target: { files: [file] },
     });
 
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Import" })).toBeEnabled();
+    });
+
     fireEvent.click(screen.getByRole("button", { name: "Import" }));
 
     await waitFor(() => {
@@ -273,6 +277,10 @@ describe("DashboardApp", () => {
         target: { files: [file] },
       });
 
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Import" })).toBeEnabled();
+      });
+
       fireEvent.click(screen.getByRole("button", { name: "Import" }));
 
       await waitFor(() => {
@@ -320,6 +328,10 @@ describe("DashboardApp", () => {
 
     fireEvent.change(screen.getByLabelText("Source map files"), {
       target: { files: [file] },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Import" })).toBeEnabled();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Import" }));
