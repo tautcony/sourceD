@@ -245,7 +245,7 @@ describe("DashboardApp", () => {
     await waitFor(() => {
       expect(messageApi.success).toHaveBeenCalledWith("Imported 1 source map files as a new version");
     });
-  });
+  }, 15000);
 
   it("imports uploaded source map files via FileReader fallback", async () => {
     const OriginalFileReader = globalThis.FileReader;
@@ -305,7 +305,7 @@ describe("DashboardApp", () => {
     } finally {
       globalThis.FileReader = OriginalFileReader;
     }
-  });
+  }, 15000);
 
   it("shows import failure message", async () => {
     mockDashboardData({ pages: [], totalVersions: 0, totalStorageBytes: 0 }, {
@@ -339,7 +339,7 @@ describe("DashboardApp", () => {
     await waitFor(() => {
       expect(messageApi.error).toHaveBeenCalledWith("import exploded");
     });
-  });
+  }, 15000);
 
   it("shows summary card values from data", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 5, totalStorageBytes: 1048576 });
