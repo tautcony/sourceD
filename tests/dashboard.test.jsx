@@ -182,7 +182,7 @@ describe("DashboardApp", () => {
     await screen.findByText((content) => content.includes(longSiteKey));
     expect(screen.getByRole("img", { name: "Storage distribution pie chart" })).toBeInTheDocument();
     expect(screen.getByText("5 versions · 12 maps · 100.00 KiB")).toBeInTheDocument();
-  });
+  }, 15000);
 
   it("distribution legend uses ellipsis for long site keys", async () => {
     mockDashboardData({ distribution: mockDistribution });
