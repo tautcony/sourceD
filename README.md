@@ -60,6 +60,10 @@ Use this project only for debugging, security research, incident response, or ot
 
 The repo uses npm for dependency management. Runtime code is bundled directly by esbuild into `bundles/`, and release builds are assembled into `dist/`.
 
+Architecture and storage notes:
+
+- [`docs/architecture.md`](docs/architecture.md): architecture diagram, IndexedDB storage graph, and map reuse design
+
 Project layout:
 
 - `manifest.json`: extension manifest
