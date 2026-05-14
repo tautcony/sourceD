@@ -102,7 +102,7 @@ describe("background shared helpers", () => {
   it("covers shared index and badge helpers", async () => {
     const shared = await import("../src/background/shared.mjs");
 
-    expect(shared.canonicalPageUrl("https://example.com/app#hash")).toBe("https://example.com/app");
+    expect(shared.canonicalPageUrl("https://example.com/app?foo=1&bar=2#hash")).toBe("https://example.com/app");
     expect(shared.canonicalPageUrl("not a url")).toBe("not a url");
     expect(shared.pageSiteKey("https://example.com/app")).toBe("https://example.com");
     expect(shared.pageSiteKey("not a url")).toBe("not a url");
@@ -222,6 +222,7 @@ describe("background session helpers", () => {
         currentSettings: vi.fn(() => ({ autoCleanup: true })),
         persistVersionState: vi.fn(() => Promise.resolve()),
         prunePageHistory: vi.fn(() => Promise.resolve()),
+        touchVersionMeta: vi.fn(() => Promise.resolve()),
       };
     });
 
@@ -262,10 +263,10 @@ describe("background session helpers", () => {
     expect(storage.persistVersionState).toHaveBeenCalled();
     expect(storage.prunePageHistory).toHaveBeenCalledWith("https://example.com/app");
 
-    const created = sessions.getOrCreateSession({ id: 5, url: "https://example.com/demo#x", title: "" });
+    const created = sessions.getOrCreateSession({ id: 5, url: "https://example.com/demo?foo=1#x", title: "" });
     expect(created.pageUrl).toBe("https://example.com/demo");
     expect(created.title).toBe("https://example.com/demo");
-    const reused = sessions.getOrCreateSession({ id: 5, url: "https://example.com/demo", title: "Demo" });
+    const reused = sessions.getOrCreateSession({ id: 5, url: "https://example.com/demo?foo=2", title: "Demo" });
     expect(reused).toBe(created);
     expect(reused.title).toBe("Demo");
 
@@ -365,6 +366,7 @@ describe("background session helpers", () => {
         currentSettings: vi.fn(() => ({ autoCleanup: false })),
         persistVersionState: vi.fn(() => Promise.reject("persist failed")),
         prunePageHistory: vi.fn(() => Promise.resolve()),
+        touchVersionMeta: vi.fn(() => Promise.resolve()),
       };
     });
 
@@ -431,6 +433,7 @@ describe("background session helpers", () => {
         currentSettings: vi.fn(() => ({ autoCleanup: false })),
         persistVersionState: vi.fn(() => Promise.resolve()),
         prunePageHistory: vi.fn(() => Promise.resolve()),
+        touchVersionMeta: vi.fn(() => Promise.resolve()),
       };
     });
 
@@ -615,7 +618,43 @@ describe("background storage helpers", () => {
     });
     expect(second.reusedExisting).toBe(true);
 
-    expect(storage.summarizePages()).toHaveLength(1);
+    const supersetCreated = await storage.importSourceMapsForPage({
+      pageUrl: "https://example.com/subset",
+      files: [
+        { mapUrl: "a.map", content: "same" },
+        { mapUrl: "b.map", content: "other" },
+      ],
+    });
+    const subsetOnly = await storage.importSourceMapsForPage({
+      pageUrl: "https://example.com/subset?step=2",
+      files: [{ mapUrl: "a.map", content: "same" }],
+    });
+    expect(subsetOnly).toEqual(expect.objectContaining({
+      ok: true,
+      reusedExisting: true,
+      versionId: supersetCreated.versionId,
+    }));
+    expect(shared.state.versionsByPage["https://example.com/subset"]).toHaveLength(1);
+
+    const queryPageFirst = await storage.importSourceMapsForPage({
+      pageUrl: "https://example.com/query-page?foo=1",
+      files: [{ mapUrl: "query-a.map", content: "same" }],
+    });
+    const queryPageSecond = await storage.importSourceMapsForPage({
+      pageUrl: "https://example.com/query-page?foo=2",
+      files: [{ mapUrl: "query-b.map", content: "other" }],
+    });
+    expect(queryPageFirst.reusedExisting).toBe(false);
+    expect(queryPageSecond.reusedExisting).toBe(false);
+    expect(shared.state.versionsByPage["https://example.com/query-page"]).toBeTruthy();
+    expect(shared.state.versionsByPage["https://example.com/query-page?foo=1"]).toBeUndefined();
+    expect(shared.state.versionsByPage["https://example.com/query-page?foo=2"]).toBeUndefined();
+
+    expect(storage.summarizePages()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ pageUrl: "https://example.com/app" }),
+      expect.objectContaining({ pageUrl: "https://example.com/subset" }),
+      expect.objectContaining({ pageUrl: "https://example.com/query-page" }),
+    ]));
     expect(storage.distributionSummary()).toEqual(expect.arrayContaining([
       expect.objectContaining({ siteKey: "https://example.com", mapCount: expect.any(Number), byteSize: expect.any(Number) }),
     ]));
@@ -692,7 +731,7 @@ describe("background storage helpers", () => {
       mapHash: "hash-b",
       content: "blob-map-b",
       createdAt: "2026-01-01T00:00:00.000Z",
-      refCount: 1,
+      refCount: 3,
     });
 
     await storage.ensureStorageReady();
@@ -712,6 +751,12 @@ describe("background storage helpers", () => {
     expect(await storage.loadBlobContentsRaw(db, [])).toEqual({});
 
     shared.state.versionIndex = { v1: meta };
+    const versionFiles = await storage.loadVersionFiles("v1");
+    expect(versionFiles).toHaveLength(2);
+    expect(versionFiles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ url: "a.map", content: "raw-map-a", refCount: 1 }),
+      expect.objectContaining({ url: "b.map", content: "blob-map-b", refCount: 3 }),
+    ]));
     expect(await storage.loadVersionFiles("missing")).toEqual([]);
   });
 
@@ -857,6 +902,89 @@ describe("background storage helpers", () => {
     ]);
     expect(compacted.desiredMetas[0].signature).not.toBe("legacy.map#oldhash");
     expect(compacted.desiredRefs[0].value.blobId).not.toBe("https://example.com::oldhash");
+  });
+
+  it("merges legacy query variants and redundant subset versions during compaction", async () => {
+    const storage = await import("../src/background/storage.mjs");
+    const shared = await import("../src/background/shared.mjs");
+    const db = createInMemoryDb();
+
+    chrome.tabs.query = vi.fn((_opts, cb) => cb([]));
+    chrome.action = { setBadgeText: vi.fn() };
+    globalThis.indexedDB = {
+      open: vi.fn(() => {
+        const req = { result: db, error: null, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+        queueMicrotask(() => {
+          req.onupgradeneeded?.();
+          req.onsuccess?.();
+        });
+        return req;
+      }),
+    };
+
+    db.stores.pageVersions.clear();
+    db.stores.versionMaps.clear();
+    db.stores.mapBlobs.clear();
+    db.stores.pageVersions.set("superset", {
+      id: "superset",
+      pageUrl: "https://example.com/app?foo=1",
+      siteKey: "https://example.com",
+      title: "Early title",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-01T00:00:00.000Z",
+      mapUrls: ["a.map", "b.map"],
+      mapCount: 2,
+      fileCount: 2,
+      byteSize: 10,
+      signature: "legacy-superset",
+    });
+    db.stores.pageVersions.set("subset", {
+      id: "subset",
+      pageUrl: "https://example.com/app?foo=2",
+      siteKey: "https://example.com",
+      title: "Later title",
+      createdAt: "2026-01-02T00:00:00.000Z",
+      lastSeenAt: "2026-01-03T00:00:00.000Z",
+      mapUrls: ["a.map"],
+      mapCount: 1,
+      fileCount: 1,
+      byteSize: 5,
+      signature: "legacy-subset",
+    });
+    db.stores.versionMaps.set("superset::a.map", "map-a");
+    db.stores.versionMaps.set("superset::b.map", "map-b");
+    db.stores.versionMaps.set("subset::a.map", "map-a");
+
+    shared.state.dbPromise = null;
+    shared.state.storageReadyPromise = null;
+    shared.state.versionIndex = {};
+    shared.state.versionsByPage = {};
+    shared.state.blobIndex = {};
+    await storage.ensureStorageReady();
+
+    const compacted = await storage.compactStorageData();
+
+    expect(compacted.stats).toEqual(expect.objectContaining({
+      removedVersions: 1,
+      remainingVersions: 1,
+    }));
+    expect(shared.state.versionsByPage["https://example.com/app"]).toEqual(["superset"]);
+    expect(shared.state.versionsByPage["https://example.com/app?foo=1"]).toBeUndefined();
+    expect(shared.state.versionIndex.superset).toEqual(expect.objectContaining({
+      pageUrl: "https://example.com/app",
+      title: "Later title",
+      lastSeenAt: "2026-01-03T00:00:00.000Z",
+      mapCount: 2,
+    }));
+    expect(shared.state.versionIndex.subset).toBeUndefined();
+    expect(await storage.loadVersionFiles("superset")).toHaveLength(2);
+    expect(storage.distributionSummary()).toEqual([
+      expect.objectContaining({
+        siteKey: "https://example.com",
+        versionCount: 1,
+        mapCount: 2,
+      }),
+    ]);
   });
 
   it("covers persist/delete refcount paths, compaction builder branches, and session clearing", async () => {
@@ -1033,8 +1161,9 @@ describe("background storage helpers", () => {
     };
 
     expect(storage.distributionSummary()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ siteKey: "https://blob-only.test", versionCount: 0, mapCount: 1, byteSize: 5 }),
+      expect.objectContaining({ siteKey: "https://example.com", versionCount: 1 }),
     ]));
+    expect(storage.distributionSummary().find((item) => item.siteKey === "https://blob-only.test")).toBeUndefined();
 
     const result = await storage.importSourceMapsForPage({
       pageUrl: "https://example.com/import#hash",

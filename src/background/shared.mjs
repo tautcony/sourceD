@@ -27,6 +27,7 @@ export const state = {
   versionIndex: {},
   versionsByPage: {},
   blobIndex: {},
+  blobSiteIndex: {},
   settings: null,
   pendingSourceMapFetches: new Map(),
   storageCompactionInProgress: false,
@@ -54,6 +55,7 @@ export function setBadgeText(num, tabId) {
 export function canonicalPageUrl(url) {
   try {
     const parsed = new URL(url);
+    parsed.search = "";
     parsed.hash = "";
     return parsed.toString();
   } catch {
@@ -102,6 +104,50 @@ export function buildSignatureFromRefs(refs) {
     .join("|");
 }
 
+function signatureTokens(signature) {
+  return String(signature || "").split("|").filter(Boolean);
+}
+
+export function findBestVersionMatch(pageUrl, signature) {
+  const candidateTokens = signatureTokens(signature);
+  if (!candidateTokens.length) {
+    return { exactId: null, supersetId: null };
+  }
+
+  let supersetId = null;
+  let bestExtraCount = Infinity;
+  const candidateSet = new Set(candidateTokens);
+
+  for (const id of ensurePageBucket(pageUrl)) {
+    const meta = state.versionIndex[id];
+    if (!meta?.signature) continue;
+    if (meta.signature === signature) {
+      return { exactId: id, supersetId: null };
+    }
+
+    const existingTokens = signatureTokens(meta.signature);
+    if (existingTokens.length <= candidateTokens.length) continue;
+
+    const existingSet = new Set(existingTokens);
+    let isSuperset = true;
+    for (const token of candidateSet) {
+      if (!existingSet.has(token)) {
+        isSuperset = false;
+        break;
+      }
+    }
+    if (!isSuperset) continue;
+
+    const extraCount = existingTokens.length - candidateTokens.length;
+    if (extraCount < bestExtraCount) {
+      supersetId = id;
+      bestExtraCount = extraCount;
+    }
+  }
+
+  return { exactId: null, supersetId };
+}
+
 export function versionLabel(meta, index, total) {
   const stamp = new Date(meta.createdAt || meta.lastSeenAt).toLocaleString("en-US", {
     month: "2-digit",
@@ -137,10 +183,11 @@ export function toBlobMeta(record) {
   };
 }
 
-export function rebuildIndexes(versions, blobs) {
+export function rebuildIndexes(versions, blobs, blobSiteIndex = {}) {
   state.versionIndex = {};
   state.versionsByPage = {};
   state.blobIndex = {};
+  state.blobSiteIndex = blobSiteIndex || {};
 
   versions.forEach((meta) => {
     state.versionIndex[meta.id] = meta;

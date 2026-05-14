@@ -60,6 +60,7 @@ globalThis.chrome = {
     getMessage: (key, substitutions) => {
       const messages = {
         commonUnknown: "Unknown",
+        commonReferenceCount: `Refs ×${substitutions?.[0] ?? ""}`,
         popupHeaderTitle: "SourceD",
         popupOpenHistory: "History",
         popupOpenGithub: "Open GitHub repository",

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Button, Space, Typography, Tree, Empty, Spin, Flex, ConfigProvider,
-  Card, Collapse, Statistic, Form, InputNumber, Switch, Tag, App, Drawer, Input, Modal,
+  Card, Collapse, Statistic, Form, InputNumber, Switch, Tag, Tabs, App, Drawer, Input, Modal,
 } from "antd";
 import {
   ReloadOutlined, DownloadOutlined, DeleteOutlined,
@@ -31,6 +31,16 @@ hljs.registerLanguage("xml", xml);
 hljs.registerLanguage("json", json);
 
 const { Title, Text } = Typography;
+const defaultDashboardSettings = {
+  retentionDays: 30,
+  maxVersionsPerPage: 10,
+  autoCleanup: true,
+  detectionEnabled: true,
+  ignoredDomains: [],
+  fetchDelayMs: 300,
+  fetchTimeoutMs: 30_000,
+  maxMapBytes: 50 * 1024 * 1024,
+};
 
 function cleanupStepStatus(step) {
   if (step?.ok === false) return "Failed";
@@ -133,6 +143,7 @@ function buildMapTree(files) {
       name: parts[parts.length - 1],
       url: file.url,
       size: file.content.length,
+      refCount: Number(file.refCount) || 1,
     });
   });
   return root;
@@ -155,6 +166,11 @@ function toAntdTreeData(node, pathPrefix = "") {
       title: (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
           <Text ellipsis={{ tooltip: file.url }} style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>{file.name}</Text>
+          {file.refCount > 1 ? (
+            <Tag color="gold" style={{ flexShrink: 0, marginInlineEnd: 0 }}>
+              {i18nMessage("commonReferenceCount", [String(file.refCount)])}
+            </Tag>
+          ) : null}
           <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fileSizeIEC(file.size)}</Text>
         </span>
       ),
@@ -219,10 +235,14 @@ function groupPagesByDomain(pages) {
   pages.forEach((page) => {
     const siteKey = page.siteKey || i18nMessage("commonUnknown");
     if (!buckets[siteKey]) {
-      buckets[siteKey] = { siteKey, pages: [], versionCount: 0, lastSeenAt: null };
+      buckets[siteKey] = { siteKey, pages: [], versionCount: 0, mapCount: 0, byteSize: 0, lastSeenAt: null };
     }
     buckets[siteKey].pages.push(page);
-    buckets[siteKey].versionCount += page.versions.length;
+    page.versions.forEach((version) => {
+      buckets[siteKey].versionCount += 1;
+      buckets[siteKey].mapCount += Number(version.mapCount) || 0;
+      buckets[siteKey].byteSize += Number(version.byteSize) || 0;
+    });
     const pageLastSeenAt = page.versions[0]?.lastSeenAt;
     if (!buckets[siteKey].lastSeenAt || new Date(pageLastSeenAt) > new Date(buckets[siteKey].lastSeenAt)) {
       buckets[siteKey].lastSeenAt = pageLastSeenAt;
@@ -236,6 +256,132 @@ function groupPagesByDomain(pages) {
     })
     /* c8 ignore next */
     .sort((a, b) => new Date(b.lastSeenAt || 0) - new Date(a.lastSeenAt || 0));
+}
+
+const distributionPalette = [
+  "#1677ff",
+  "#52c41a",
+  "#faad14",
+  "#722ed1",
+  "#eb2f96",
+  "#13c2c2",
+  "#fa541c",
+  "#2f54eb",
+];
+
+function DistributionChart({ items }) {
+  const normalizedItems = useMemo(() => {
+    return items
+     .filter((item) => item && item.siteKey)
+     .slice()
+     .sort((a, b) => (Number(b.byteSize) || 0) - (Number(a.byteSize) || 0))
+     .map((item, index) => ({
+       ...item,
+       color: distributionPalette[index % distributionPalette.length],
+     }));
+  }, [items]);
+
+  const totalBytes = useMemo(() => {
+    return normalizedItems.reduce((sum, item) => sum + (Number(item.byteSize) || 0), 0);
+  }, [normalizedItems]);
+
+  const chartStops = useMemo(() => {
+    if (!normalizedItems.length) return [];
+    const totalWeight = totalBytes > 0 ? totalBytes : normalizedItems.length;
+    let offset = 0;
+    return normalizedItems.map((item) => {
+     const weight = totalBytes > 0 ? (Number(item.byteSize) || 0) : 1;
+     const nextOffset = offset + (weight / totalWeight) * 360;
+     const stop = {
+       ...item,
+       from: offset,
+       to: nextOffset,
+       percent: totalBytes > 0 ? ((Number(item.byteSize) || 0) / totalBytes) * 100 : 0,
+     };
+     offset = nextOffset;
+     return stop;
+    });
+  }, [normalizedItems, totalBytes]);
+
+  const chartBackground = useMemo(() => {
+    if (!chartStops.length) return "#f0f0f0";
+    return `conic-gradient(${chartStops.map((item) => `${item.color} ${item.from}deg ${item.to}deg`).join(", ")})`;
+  }, [chartStops]);
+
+  return (
+    <Flex gap={24} wrap="wrap" align="stretch">
+     <Flex justify="center" align="center" style={{ flex: "0 0 220px", width: 220 }}>
+       <div
+         role="img"
+         aria-label="Storage distribution pie chart"
+         style={{
+           width: 220,
+           height: 220,
+           borderRadius: "50%",
+           background: chartBackground,
+           position: "relative",
+           flexShrink: 0,
+         }}
+       >
+         <Flex
+           vertical
+           justify="center"
+           align="center"
+           style={{
+             position: "absolute",
+             inset: 36,
+             borderRadius: "50%",
+             background: "#fff",
+             textAlign: "center",
+             padding: 12,
+           }}
+         >
+           <Text type="secondary" style={{ fontSize: 12 }}>{i18nMessage("dashboardDistributionTitle")}</Text>
+           <Text strong>{fileSizeIEC(totalBytes)}</Text>
+         </Flex>
+       </div>
+     </Flex>
+     <Flex
+       data-testid="dashboard-distribution-legend"
+       vertical
+       gap={10}
+       style={{
+         flex: "1 1 280px",
+         minWidth: 280,
+         height: 220,
+         maxHeight: 220,
+         overflowY: "auto",
+         paddingRight: 4,
+       }}
+     >
+       {chartStops.map((item) => (
+         <Flex key={item.siteKey} align="center" gap={10} style={{ minWidth: 0 }}>
+           <span
+             aria-hidden="true"
+             style={{
+               width: 10,
+               height: 10,
+               borderRadius: "50%",
+               background: item.color,
+               flexShrink: 0,
+             }}
+           />
+           <Flex justify="space-between" align="center" style={{ minWidth: 0, flex: 1, gap: 12 }}>
+             <Flex vertical gap={2} style={{ minWidth: 0, flex: 1 }}>
+               <Text strong ellipsis={{ tooltip: item.siteKey }}>{item.siteKey}</Text>
+               <Text type="secondary" style={{ fontSize: 12 }}>
+                 {[i18nMessage("dashboardDistributionVersions", [String(item.versionCount)]), i18nMessage("dashboardDistributionMaps", [String(item.mapCount)]), fileSizeIEC(item.byteSize || 0)].join(" · ")}
+               </Text>
+             </Flex>
+             <Text type="secondary" style={{ flexShrink: 0 }}>
+               {`${item.percent.toFixed(1)}%`}
+             </Text>
+           </Flex>
+         </Flex>
+       ))}
+     </Flex>
+    </Flex>
+  );
 }
 
 // ─── Version Panel ──────────────────────────────────────────────────────────────
@@ -606,6 +752,7 @@ function ImportMapsModal({ open, importing, onCancel, onImport }) {
 function DashboardContent() {
   const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [pages, setPages] = useState([]);
   const [distribution, setDistribution] = useState([]);
   const [settings, setSettings] = useState(null);
@@ -613,18 +760,32 @@ function DashboardContent() {
   const [totalStorageBytes, setTotalStorageBytes] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [activePageTabs, setActivePageTabs] = useState({});
+  const hasLoadedDashboardRef = useRef(false);
 
-  const loadData = useCallback(() => {
-    setLoading(true);
-    chrome.runtime.sendMessage({ action: "getDashboardData" }, (data) => {
-      setLoading(false);
-      setPages(data?.pages || []);
-      setDistribution(data?.distribution || []);
-      setSettings(data?.settings || { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, ignoredDomains: [], fetchDelayMs: 300, fetchTimeoutMs: 30_000, maxMapBytes: 50 * 1024 * 1024 });
-      setTotalVersions(data?.totalVersions || 0);
-      setTotalStorageBytes(data?.totalStorageBytes || 0);
-    });
+  const applyDashboardData = useCallback((data) => {
+    setPages(data?.pages || []);
+    setDistribution(data?.distribution || []);
+    setSettings(data?.settings || defaultDashboardSettings);
+    setTotalVersions(data?.totalVersions || 0);
+    setTotalStorageBytes(data?.totalStorageBytes || 0);
   }, []);
+
+  const loadData = useCallback((options = {}) => {
+    const preserveContent = options.preserveContent ?? hasLoadedDashboardRef.current;
+    if (preserveContent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    chrome.runtime.sendMessage({ action: "getDashboardData" }, (data) => {
+      hasLoadedDashboardRef.current = true;
+      setLoading(false);
+      setRefreshing(false);
+      applyDashboardData(data);
+    });
+  }, [applyDashboardData]);
 
   useEffect(() => {
     const locale = chrome.i18n.getUILanguage() || "en";
@@ -686,21 +847,21 @@ function DashboardContent() {
   const handleDeleteVersion = useCallback((event, versionId) => {
     stopHeaderAction(event);
     chrome.runtime.sendMessage({ action: "deleteVersion", versionId }, () => {
-      loadData();
+      loadData({ preserveContent: true });
     });
   }, [loadData, stopHeaderAction]);
 
   const handleDeletePage = useCallback((event, pageUrl) => {
     stopHeaderAction(event);
     chrome.runtime.sendMessage({ action: "deletePageHistory", pageUrl }, () => {
-      loadData();
+      loadData({ preserveContent: true });
     });
   }, [loadData, stopHeaderAction]);
 
   const handleDeleteSite = useCallback((event, siteKey) => {
     stopHeaderAction(event);
     chrome.runtime.sendMessage({ action: "deleteSiteHistory", siteKey }, () => {
-      loadData();
+      loadData({ preserveContent: true });
     });
   }, [loadData, stopHeaderAction]);
 
@@ -730,9 +891,16 @@ function DashboardContent() {
 
       message.success(detail);
       setImportOpen(false);
-      loadData();
+      loadData({ preserveContent: true });
     });
   }, [loadData, message]);
+
+  const handlePageTabChange = useCallback((siteKey, pageUrl) => {
+    setActivePageTabs((current) => {
+      if (current[siteKey] === pageUrl) return current;
+      return { ...current, [siteKey]: pageUrl };
+    });
+  }, []);
 
   const domainCollapseItems = useMemo(() => {
     return groups.map((group) => ({
@@ -745,7 +913,7 @@ function DashboardContent() {
               <Text strong ellipsis={{ tooltip: group.siteKey }}>{group.siteKey}</Text>
             </Flex>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {i18nMessage("dashboardDomainSummary", [String(group.pages.length), String(group.versionCount)])}
+              {[i18nMessage("dashboardDistributionVersions", [String(group.versionCount)]), i18nMessage("dashboardDistributionMaps", [String(group.mapCount)]), fileSizeIEC(group.byteSize || 0)].join(" · ")}
             </Text>
           </Flex>
           <Flex align="center" gap={8} style={{ flexShrink: 0, marginLeft: 12 }}>
@@ -766,69 +934,87 @@ function DashboardContent() {
         </Flex>
       ),
       children: (
-        <Collapse
+        <Tabs
           size="small"
+          activeKey={activePageTabs[group.siteKey] || group.pages[0]?.pageUrl}
+          onChange={(pageUrl) => handlePageTabChange(group.siteKey, pageUrl)}
           items={group.pages.map((page) => ({
             key: page.pageUrl,
             label: (
-              <Flex justify="space-between" align="center" style={{ overflow: "hidden" }}>
-                <Flex vertical gap={2} style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
-                  {/* c8 ignore next 2 */}
-                  <Text strong ellipsis={{ tooltip: page.title || page.pageUrl }}>{page.title || page.pageUrl}</Text>
-                  <Text type="secondary" ellipsis={{ tooltip: page.pageUrl }} style={{ fontSize: 12 }}>{page.pageUrl}</Text>
-                </Flex>
-                <Flex align="center" gap={8} style={{ flexShrink: 0, marginLeft: 12 }}>
-                  <Tag>{page.versions.length}</Tag>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {i18nMessage("dashboardLastUpdated", [formatShortDate(page.versions[0]?.lastSeenAt)])}
-                  </Text>
-                  <Button
-                    size="small"
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
-                    title={i18nMessage("dashboardDeleteVersion")}
-                    aria-label={i18nMessage("dashboardDeleteVersion")}
-                    onClick={(event) => handleDeletePage(event, page.pageUrl)}
-                  />
-                </Flex>
+              <Flex align="center" gap={8} style={{ minWidth: 0, maxWidth: 320 }}>
+                {/* c8 ignore next 2 */}
+                <Text strong ellipsis={{ tooltip: page.title || page.pageUrl }} style={{ minWidth: 0 }}>
+                  {page.title || page.pageUrl}
+                </Text>
+                <Tag style={{ flexShrink: 0, marginInlineEnd: 0 }}>{page.versions.length}</Tag>
               </Flex>
             ),
             children: (
-              <Collapse
-                size="small"
-                items={page.versions.map((version) => ({
-                  key: version.id,
-                  label: (
-                    <Flex justify="space-between" align="center" style={{ overflow: "hidden" }}>
-                      <Flex align="center" gap={8} style={{ minWidth: 0, flex: 1 }}>
-                        <ClockCircleOutlined style={{ flexShrink: 0 }} />
-                        <Text ellipsis={{ tooltip: version.label }}>{version.label}</Text>
+              <Flex vertical gap={12} style={{ paddingTop: 4 }}>
+                <Flex
+                  justify="space-between"
+                  align="center"
+                  gap={12}
+                  style={{ minWidth: 0 }}
+                  data-page-panel={page.pageUrl}
+                >
+                  <Flex vertical gap={2} style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+                    {/* c8 ignore next 2 */}
+                    <Text strong ellipsis={{ tooltip: page.title || page.pageUrl }}>{page.title || page.pageUrl}</Text>
+                    <Text type="secondary" ellipsis={{ tooltip: page.pageUrl }} style={{ fontSize: 12 }}>
+                      {page.pageUrl}
+                    </Text>
+                  </Flex>
+                  <Flex align="center" gap={8} style={{ flexShrink: 0, marginLeft: 12 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {i18nMessage("dashboardLastUpdated", [formatShortDate(page.versions[0]?.lastSeenAt)])}
+                    </Text>
+                    <Button
+                      size="small"
+                      type="text"
+                      danger
+                      icon={<DeleteOutlined />}
+                      title={i18nMessage("dashboardDeleteVersion")}
+                      aria-label={i18nMessage("dashboardDeleteVersion")}
+                      onClick={(event) => handleDeletePage(event, page.pageUrl)}
+                    />
+                  </Flex>
+                </Flex>
+                <Collapse
+                  size="small"
+                  items={page.versions.map((version) => ({
+                    key: version.id,
+                    label: (
+                      <Flex justify="space-between" align="center" style={{ overflow: "hidden" }}>
+                        <Flex align="center" gap={8} style={{ minWidth: 0, flex: 1 }}>
+                          <ClockCircleOutlined style={{ flexShrink: 0 }} />
+                          <Text ellipsis={{ tooltip: version.label }}>{version.label}</Text>
+                        </Flex>
+                        <Flex gap={4} wrap="wrap" style={{ flexShrink: 0, marginLeft: 8 }}>
+                          <Tag>{i18nMessage("dashboardCapturedAt", [formatVersionTime(version.createdAt)])}</Tag>
+                          <Tag>{i18nMessage("dashboardMapCount", [String(version.mapCount || 0)])}</Tag>
+                          <Button
+                            size="small"
+                            type="text"
+                            danger
+                            icon={<DeleteOutlined />}
+                            title={i18nMessage("dashboardDeleteVersion")}
+                            aria-label={i18nMessage("dashboardDeleteVersion")}
+                            onClick={(event) => handleDeleteVersion(event, version.id)}
+                          />
+                        </Flex>
                       </Flex>
-                      <Flex gap={4} wrap="wrap" style={{ flexShrink: 0, marginLeft: 8 }}>
-                        <Tag>{i18nMessage("dashboardCapturedAt", [formatVersionTime(version.createdAt)])}</Tag>
-                        <Tag>{i18nMessage("dashboardMapCount", [String(version.mapCount || 0)])}</Tag>
-                        <Button
-                          size="small"
-                          type="text"
-                          danger
-                          icon={<DeleteOutlined />}
-                          title={i18nMessage("dashboardDeleteVersion")}
-                          aria-label={i18nMessage("dashboardDeleteVersion")}
-                          onClick={(event) => handleDeleteVersion(event, version.id)}
-                        />
-                      </Flex>
-                    </Flex>
-                  ),
-                  children: <VersionPanel version={version} />,
-                }))}
-              />
+                    ),
+                    children: <VersionPanel version={version} />,
+                  }))}
+                />
+              </Flex>
             ),
           }))}
         />
       ),
     }));
-  }, [groups, handleDeletePage, handleDeleteSite, handleDeleteVersion]);
+  }, [activePageTabs, groups, handleDeletePage, handleDeleteSite, handleDeleteVersion, handlePageTabChange]);
 
   return (
     <ConfigProvider theme={{ token: { fontSize: 13 } }}>
@@ -860,7 +1046,7 @@ function DashboardContent() {
             <Button icon={<ClearOutlined />} onClick={handleCleanup} loading={cleaning}>
               {i18nMessage("dashboardCleanup")}
             </Button>
-            <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>
+            <Button icon={<ReloadOutlined />} onClick={() => loadData({ preserveContent: true })} loading={refreshing}>
               {i18nMessage("dashboardRefresh")}
             </Button>
           </Space>
@@ -903,21 +1089,7 @@ function DashboardContent() {
           ) : !distribution.length ? (
             <Empty description={i18nMessage("dashboardEmptyDistribution")} />
           ) : (
-            <Flex gap={16} wrap="wrap">
-              {distribution.map((item) => (
-                <Card size="small" key={item.siteKey} style={{ minWidth: 0, flex: "1 1 220px", maxWidth: "100%", overflow: "hidden" }}>
-                  <Flex vertical gap={4} style={{ overflow: "hidden" }}>
-                    <Text strong ellipsis={{ tooltip: item.siteKey }}>{item.siteKey}</Text>
-                    <Flex gap={4} wrap="wrap">
-                      <Tag>{i18nMessage("dashboardDistributionVersions", [String(item.versionCount)])}</Tag>
-                      <Tag>{i18nMessage("dashboardDistributionMaps", [String(item.mapCount)])}</Tag>
-                      {/* c8 ignore next */}
-                      <Tag>{fileSizeIEC(item.byteSize || 0)}</Tag>
-                    </Flex>
-                  </Flex>
-                </Card>
-              ))}
-            </Flex>
+            <DistributionChart items={distribution} />
           )}
         </Card>
 

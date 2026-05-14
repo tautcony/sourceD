@@ -99,6 +99,10 @@
     "message": "SourceD",
     "description": "弹窗标题"
   },
+  "commonReferenceCount": {
+    "message": "引用 ×$1",
+    "description": "共享 map 文件引用次数"
+  },
   "popupClearButton": {
     "message": "清空当前页面",
     "description": "弹窗清空按钮"

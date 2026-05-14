@@ -77,6 +77,8 @@ describe("background db adapters", () => {
 
     await expect(dbModule.ensureStorageReady()).resolves.toEqual(fakeDb);
     expect(rebuildIndexes).toHaveBeenCalledWith([{ id: "v1" }], [{ id: "b1" }]);
+    expect(fakeDb.transaction).toHaveBeenCalledTimes(2);
+    expect(fakeDb.transaction).not.toHaveBeenCalledWith("versionMaps", expect.anything());
     expect(refreshBadge).toHaveBeenCalled();
 
     state.dbPromise = null;

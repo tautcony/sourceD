@@ -104,6 +104,20 @@ describe("PopupApp", () => {
     expect(screen.getByText(/3 versions/)).toBeInTheDocument();
   });
 
+  it("shows shared map reference count for reused files", async () => {
+    const sourceMap = makeSourceMap(["src/index.js"], ['console.log("hi");']);
+    mockPopupState({
+      pageUrl: "https://example.com/app",
+      latestVersion: { id: "v1", label: "v1 · 01/15, 10:30 AM", createdAt: "2026-01-15T10:30:00Z", mapCount: 1, byteSize: 500 },
+      files: [{ url: "https://example.com/shared.js.map", content: sourceMap, refCount: 4 }],
+      totalVersions: 3,
+      totalStorageBytes: 2048,
+    });
+    render(<PopupApp />);
+    await screen.findByText("Download all");
+    expect(screen.getByText("Refs ×4")).toBeInTheDocument();
+  });
+
   it("enables clear button when version exists", async () => {
     mockPopupState({
       latestVersion: { id: "v1", label: "v1", createdAt: "2026-01-01T00:00:00Z", mapCount: 1, byteSize: 100 },

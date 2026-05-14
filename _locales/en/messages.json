@@ -99,6 +99,10 @@
     "message": "SourceD",
     "description": "Popup header title"
   },
+  "commonReferenceCount": {
+    "message": "Refs ×$1",
+    "description": "Shared map file reference count"
+  },
   "popupClearButton": {
     "message": "Clear Current Page",
     "description": "Popup clear button label"

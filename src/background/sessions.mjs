@@ -1,4 +1,5 @@
 import {
+  findBestVersionMatch,
   buildSignatureFromRefs,
   canonicalPageUrl,
   ensurePageBucket,
@@ -15,6 +16,7 @@ import {
   currentSettings,
   persistVersionState,
   prunePageHistory,
+  touchVersionMeta,
 } from "./storage.mjs";
 import { createSourceMapFetcher } from "./sourceMaps.mjs";
 
@@ -95,6 +97,36 @@ export function upsertSessionVersion(session) {
         refreshBadgeForTab(session.tabId, session.pageUrl);
         return;
       }
+    }
+
+    const updateExistingVersionMeta = (versionId, keepOwned) => {
+      const previousMeta = state.versionIndex[versionId];
+      if (!previousMeta) return;
+      const nextMeta = Object.assign({}, previousMeta, {
+        title: session.title,
+        lastSeenAt: new Date().toISOString(),
+        tabId: session.tabId,
+      });
+
+      return touchVersionMeta(nextMeta)
+        .then(() => sortPageVersions(session.pageUrl))
+        .then(() => {
+          session.versionId = versionId;
+          session.versionOwned = keepOwned;
+          session.signature = nextMeta.signature;
+          refreshBadgeForTab(session.tabId, session.pageUrl);
+          broadcastSummary();
+        });
+    };
+
+    const { exactId, supersetId } = findBestVersionMatch(session.pageUrl, artifacts.signature);
+
+    if (exactId) {
+      return updateExistingVersionMeta(exactId, session.versionOwned && session.versionId === exactId);
+    }
+
+    if (supersetId) {
+      return updateExistingVersionMeta(supersetId, session.versionOwned && session.versionId === supersetId);
     }
 
     if (session.versionId && session.versionOwned) {

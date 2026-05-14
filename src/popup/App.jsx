@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Button, Space, Tooltip, Typography, Tree, Empty, Spin, Flex, ConfigProvider, Switch, theme } from "antd";
+import { Button, Space, Tooltip, Typography, Tree, Empty, Spin, Flex, ConfigProvider, Switch, Tag, theme } from "antd";
 import { DownloadOutlined, HistoryOutlined, DeleteOutlined, FolderOutlined, FileOutlined, GithubOutlined } from "@ant-design/icons";
 import {
   fileSizeIEC,
@@ -31,6 +31,7 @@ function buildMapTree(files) {
       name: parts[parts.length - 1],
       url: file.url,
       size: file.content.length,
+      refCount: Number(file.refCount) || 1,
     });
   });
   return root;
@@ -55,6 +56,11 @@ function toAntdTreeData(node, pathPrefix = "") {
       title: (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
           <Text ellipsis={{ tooltip: file.url }} style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>{file.name}</Text>
+          {file.refCount > 1 ? (
+            <Tag color="gold" style={{ flexShrink: 0, marginInlineEnd: 0 }}>
+              {i18nMessage("commonReferenceCount", [String(file.refCount)])}
+            </Tag>
+          ) : null}
           <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fileSizeIEC(file.size)}</Text>
         </span>
       ),

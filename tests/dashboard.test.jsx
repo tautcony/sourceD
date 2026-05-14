@@ -73,6 +73,33 @@ function mockDashboardData(data, extraHandlers = {}) {
   });
 }
 
+async function expandDomain(siteKey = longSiteKey) {
+  const domainTitles = await screen.findAllByText((content) => content.includes(siteKey));
+  const domainTitle = domainTitles[0];
+  fireEvent.click(domainTitle.closest(".ant-collapse-header"));
+}
+
+async function activatePageTab(pageText = "Example App") {
+  const pageLabels = await screen.findAllByText((content) => content.includes(pageText));
+  const pageLabel = pageLabels.find((node) => node.closest(".ant-tabs-tab")) || pageLabels[0];
+  const tabNode = pageLabel.closest(".ant-tabs-tab");
+  if (tabNode && tabNode.getAttribute("aria-selected") !== "true") {
+    fireEvent.click(tabNode);
+  }
+  return pageLabel;
+}
+
+async function openVersionPanel({
+  siteKey = longSiteKey,
+  pageText = "Example App",
+  versionText = "v1.0.0-beta",
+} = {}) {
+  await expandDomain(siteKey);
+  await activatePageTab(pageText);
+  const versionTitle = await screen.findByText((content) => content.includes(versionText));
+  fireEvent.click(versionTitle.closest(".ant-collapse-header"));
+}
+
 // Mock FileReader for download tests
 class MockFileReader {
   readAsDataURL() {
@@ -149,24 +176,24 @@ describe("DashboardApp", () => {
     expect(screen.getByText((content) => content.includes(longSiteKey))).toBeInTheDocument();
   });
 
-  it("renders distribution cards", async () => {
+  it("renders distribution pie chart", async () => {
     mockDashboardData({ distribution: mockDistribution });
     render(<DashboardApp />);
     await screen.findByText((content) => content.includes(longSiteKey));
-    expect(screen.getByText("5 versions")).toBeInTheDocument();
-    expect(screen.getByText("12 maps")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Storage distribution pie chart" })).toBeInTheDocument();
+    expect(screen.getByText("5 versions · 12 maps · 100.00 KB")).toBeInTheDocument();
   });
 
-  it("distribution cards have overflow hidden", async () => {
+  it("distribution legend uses ellipsis for long site keys", async () => {
     mockDashboardData({ distribution: mockDistribution });
     const { container } = render(<DashboardApp />);
     await screen.findByText((content) => content.includes(longSiteKey));
-    // Distribution card should constrain overflow
-    const distributionCards = container.querySelectorAll(".ant-card");
-    const distributionSection = Array.from(distributionCards).filter((card) => {
-      return card.querySelector(".ant-typography-ellipsis");
+    const ellipsisNodes = container.querySelectorAll(".ant-typography-ellipsis");
+    expect(ellipsisNodes.length).toBeGreaterThan(0);
+    expect(screen.getByTestId("dashboard-distribution-legend")).toHaveStyle({
+      maxHeight: "220px",
+      overflowY: "auto",
     });
-    expect(distributionSection.length).toBeGreaterThan(0);
   });
 
   it("injects CSS to fix collapse header overflow", () => {
@@ -357,16 +384,16 @@ describe("DashboardApp", () => {
   it("renders domain summary text", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
-    await screen.findByText(/1 pages/);
-    expect(screen.getByText(/1 pages · 1 versions/)).toBeInTheDocument();
+    await screen.findByText(/1 versions/);
+    expect(screen.getByText("1 versions · 3 maps · 1.00 KB")).toBeInTheDocument();
   });
 
   it("renders distribution byte sizes", async () => {
     mockDashboardData({ distribution: mockDistribution });
     render(<DashboardApp />);
-    await screen.findByText("100.00 KB");
-    expect(screen.getByText("100.00 KB")).toBeInTheDocument();
-    expect(screen.getByText("50.00 KB")).toBeInTheDocument();
+    await screen.findByText("5 versions · 12 maps · 100.00 KB");
+    expect(screen.getByText("5 versions · 12 maps · 100.00 KB")).toBeInTheDocument();
+    expect(screen.getByText("3 versions · 8 maps · 50.00 KB")).toBeInTheDocument();
   });
 
   it("handles cleanup with no issues found", async () => {
@@ -502,11 +529,11 @@ describe("DashboardApp", () => {
     });
   });
 
-  it("renders multiple distribution cards", async () => {
+  it("renders multiple distribution legend rows", async () => {
     mockDashboardData({ distribution: mockDistribution });
     render(<DashboardApp />);
-    await screen.findByText("3 versions");
-    expect(screen.getByText("8 maps")).toBeInTheDocument();
+    await screen.findByText("3 versions · 8 maps · 50.00 KB");
+    expect(screen.getByText("3 versions · 8 maps · 50.00 KB")).toBeInTheDocument();
   });
 
   it("CSS injection includes tree node fix", () => {
@@ -517,13 +544,12 @@ describe("DashboardApp", () => {
     expect(matchingTag.textContent).toContain("nowrap");
   });
 
-  it("renders page title in domain collapse header", async () => {
+  it("renders page tabs inside each domain group", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
-    // The page title appears in the nested collapse header (inside the domain group)
-    await screen.findByText((content) => content.includes(longSiteKey));
-    // domain header has the siteKey and summary text
-    expect(screen.getByText(/1 pages · 1 versions/)).toBeInTheDocument();
+    await expandDomain();
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Example App With A Very Long Title");
+    expect(screen.getByText("1 versions · 3 maps · 1.00 KB")).toBeInTheDocument();
   });
 
   it("renders version count tag in domain header", async () => {
@@ -539,21 +565,7 @@ describe("DashboardApp", () => {
   it("loads version files when version collapse is expanded", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
-    const domainTitle = await screen.findByText((content) => content.includes(longSiteKey), {}, { timeout: 10000 });
-
-    // Expand domain group
-    const domainHeader = domainTitle.closest(".ant-collapse-header");
-    fireEvent.click(domainHeader);
-
-    // Expand page panel
-    const pageTitle = await screen.findByText((content) => content.includes("Example App With A Very Long Title"), {}, { timeout: 10000 });
-    const pageHeader = pageTitle.closest(".ant-collapse-header");
-    fireEvent.click(pageHeader);
-
-    // Expand version panel
-    const versionTitle = await screen.findByText((content) => content.includes("v1.0.0-beta"), {}, { timeout: 10000 });
-    const versionHeader = versionTitle.closest(".ant-collapse-header");
-    fireEvent.click(versionHeader);
+    await openVersionPanel({ pageText: "Example App With A Very Long Title" });
 
     // VersionPanel should load files and show file count
     await screen.findByText(/1 files/, {}, { timeout: 10000 });
@@ -566,31 +578,32 @@ describe("DashboardApp", () => {
   it("shows empty version files when no files returned", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024, versionFiles: [] });
     render(<DashboardApp />);
-    await screen.findByText((content) => content.includes(longSiteKey));
-
-    // Expand all collapses
-    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
-    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     await waitFor(() => {
       expect(screen.getByText("No files in this version.")).toBeInTheDocument();
     });
   });
 
+  it("shows shared map reference count for reused files", async () => {
+    mockDashboardData({
+      pages: mockPages,
+      totalVersions: 1,
+      totalStorageBytes: 1024,
+      versionFiles: [{ url: "https://example.com/shared.js.map", content: sourceMapContent, refCount: 3 }],
+    });
+    render(<DashboardApp />);
+    await openVersionPanel();
+
+    await waitFor(() => {
+      expect(screen.getByText("Refs ×3")).toBeInTheDocument();
+    });
+  });
+
   it("handles version download button click", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
-    await screen.findByText((content) => content.includes(longSiteKey));
-
-    // Expand all panels
-    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
-    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     // Wait for VersionPanel to load
     await waitFor(() => screen.getByText("Download version"));
@@ -608,12 +621,7 @@ describe("DashboardApp", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     render(<DashboardApp />);
-    await screen.findByText((content) => content.includes(longSiteKey));
-    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
-    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     await waitFor(() => screen.getByText("Download version"));
     fireEvent.click(screen.getByText("Download version").closest("button"));
@@ -626,12 +634,8 @@ describe("DashboardApp", () => {
   it("handles version delete button click", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
-    await screen.findByText((content) => content.includes(longSiteKey));
-
-    // Expand only the levels required to render the version header.
-    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
-    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
+    await expandDomain();
+    await activatePageTab();
     const versionTitle = await screen.findByText((content) => content.includes("v1.0.0-beta"));
     const versionHeaderNode = versionTitle.closest(".ant-collapse-header");
     const deleteBtn = within(versionHeaderNode).getByRole("button", { name: "Delete" });
@@ -648,13 +652,11 @@ describe("DashboardApp", () => {
   it("handles page delete button click from page header", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
-    await screen.findByText((content) => content.includes(longSiteKey));
-
-    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("Example App With A Very Long Title")));
-
-    const pageHeaderNode = screen.getByText((content) => content.includes("Example App With A Very Long Title")).closest(".ant-collapse-header");
-    const deleteBtn = within(pageHeaderNode).getByRole("button", { name: "Delete" });
+    await expandDomain();
+    const pagePanelLabel = screen.getAllByText((content) => content.includes("Example App With A Very Long Title"))
+      .find((node) => node.closest("[data-page-panel]"));
+    const pagePanelNode = pagePanelLabel.closest("[data-page-panel]");
+    const deleteBtn = within(pagePanelNode).getByRole("button", { name: "Delete" });
     fireEvent.click(deleteBtn);
 
     await waitFor(() => {
@@ -682,17 +684,64 @@ describe("DashboardApp", () => {
     });
   });
 
+  it("keeps history content visible while site deletion triggers a reload", async () => {
+    let hasLoadedInitialData = false;
+    let pendingReload = null;
+    chrome.runtime.sendMessage = vi.fn((msg, cb) => {
+      if (msg.action === "getDashboardData") {
+        if (hasLoadedInitialData) {
+          pendingReload = cb;
+          return;
+        }
+        hasLoadedInitialData = true;
+        cb({
+          pages: mockPages,
+          distribution: mockDistribution,
+          settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, ignoredDomains: [], fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 },
+          totalVersions: 1,
+          totalStorageBytes: 1024,
+        });
+        return;
+      }
+
+      if (msg.action === "deleteSiteHistory") {
+        cb({ ok: true });
+        return;
+      }
+
+      if (msg.action === "getVersionFiles") {
+        cb({ ok: true, files: mockVersionFiles });
+        return;
+      }
+
+      cb({ ok: true });
+    });
+
+    render(<DashboardApp />);
+    const [domainLabel] = await screen.findAllByText((content) => content.includes(longSiteKey));
+    const domainHeaderNode = domainLabel.closest(".ant-collapse-header");
+
+    fireEvent.click(within(domainHeaderNode).getByRole("button", { name: "Delete" }));
+
+    expect(screen.getAllByText((content) => content.includes(longSiteKey)).length).toBeGreaterThan(0);
+    expect(screen.queryByText("No history yet.")).not.toBeInTheDocument();
+    expect(typeof pendingReload).toBe("function");
+
+    pendingReload({
+      pages: [],
+      distribution: [],
+      settings: { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: true, detectionEnabled: true, ignoredDomains: [], fetchDelayMs: 300, fetchTimeoutMs: 30000, maxMapBytes: 52428800 },
+      totalVersions: 0,
+      totalStorageBytes: 0,
+    });
+
+    await screen.findByText("No history yet.");
+  });
+
   it("opens preview drawer when preview button is clicked", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
-    await screen.findByText((content) => content.includes(longSiteKey));
-
-    // Expand all panels
-    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
-    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     await waitFor(() => screen.getByText("Preview Sources"));
     const previewBtn = screen.getByText("Preview Sources").closest("button");
@@ -712,13 +761,7 @@ describe("DashboardApp", () => {
   it("closes preview drawer when close button is clicked", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
-    await screen.findByText((content) => content.includes(longSiteKey));
-
-    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
-    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     await waitFor(() => screen.getByText("Preview Sources"));
     fireEvent.click(screen.getByText("Preview Sources").closest("button"));
@@ -734,14 +777,7 @@ describe("DashboardApp", () => {
   it("selects a source file in preview drawer and shows code", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
-    await screen.findByText((content) => content.includes(longSiteKey));
-
-    // Expand all panels to reach VersionPanel
-    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
-    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     // Open preview drawer
     await waitFor(() => screen.getByText("Preview Sources"));
@@ -783,13 +819,7 @@ describe("DashboardApp", () => {
       versionFiles: [{ url: "https://example.com/readme.js.map", content: unknownMap }],
     });
     render(<DashboardApp />);
-    await screen.findByText((content) => content.includes(longSiteKey));
-
-    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
-    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     await waitFor(() => screen.getByText("Preview Sources"));
     fireEvent.click(screen.getByText("Preview Sources").closest("button"));
@@ -809,13 +839,7 @@ describe("DashboardApp", () => {
     });
 
     render(<DashboardApp />);
-    await screen.findByText((content) => content.includes(longSiteKey));
-
-    fireEvent.click(screen.getByText((content) => content.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("Example App")));
-    fireEvent.click(screen.getByText((content) => content.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((content) => content.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((content) => content.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     await waitFor(() => screen.getByText("Preview Sources"));
     fireEvent.click(screen.getByText("Preview Sources").closest("button"));
@@ -966,14 +990,7 @@ describe("DashboardApp", () => {
       versionFiles: [{ url: "https://example.com/bundle.js.map", content: txtSourceMap }],
     });
     render(<DashboardApp />);
-    await screen.findByText((c) => c.includes(longSiteKey));
-
-    // Expand all panels
-    fireEvent.click(screen.getByText((c) => c.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("Example App")));
-    fireEvent.click(screen.getByText((c) => c.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((c) => c.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     // Open preview and select the txt file
     await waitFor(() => screen.getByText("Preview Sources"));
@@ -1077,8 +1094,8 @@ describe("DashboardApp", () => {
     // Expand alpha.com domain to see pages sorted by date
     fireEvent.click(screen.getByText((c) => c.includes("alpha.com")).closest(".ant-collapse-header"));
     await waitFor(() => {
-      expect(screen.getByText("Page 1")).toBeInTheDocument();
-      expect(screen.getByText("Page 2")).toBeInTheDocument();
+      expect(screen.getAllByText("Page 1").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Page 2").length).toBeGreaterThan(0);
     });
   });
 
@@ -1105,14 +1122,7 @@ describe("DashboardApp", () => {
     }];
     mockDashboardData({ pages: zeroBytePage, totalVersions: 1, totalStorageBytes: 0 });
     render(<DashboardApp />);
-    await screen.findByText((c) => c.includes("zero.com"));
-
-    // Expand all
-    fireEvent.click(screen.getByText((c) => c.includes("zero.com")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("Zero Bytes Page")));
-    fireEvent.click(screen.getByText((c) => c.includes("Zero Bytes Page")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("v6")));
-    fireEvent.click(screen.getByText((c) => c.includes("v6")).closest(".ant-collapse-header"));
+    await openVersionPanel({ siteKey: "zero.com", pageText: "Zero Bytes Page", versionText: "v6" });
 
     await waitFor(() => screen.getByText(/1 files/));
     const zeroBytes = screen.getAllByText("0 Bytes");
@@ -1156,14 +1166,7 @@ describe("DashboardApp", () => {
       }
     });
     render(<DashboardApp />);
-    await screen.findByText((c) => c.includes(longSiteKey));
-
-    // Expand all to reach version
-    fireEvent.click(screen.getByText((c) => c.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("Example App")));
-    fireEvent.click(screen.getByText((c) => c.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((c) => c.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     // Should show empty version files message
     await waitFor(() => {
@@ -1183,14 +1186,7 @@ describe("DashboardApp", () => {
       versionFiles: [{ url: "https://example.com/bundle.js.map", content: deepSourceMap }],
     });
     render(<DashboardApp />);
-    await screen.findByText((c) => c.includes(longSiteKey));
-
-    // Expand all
-    fireEvent.click(screen.getByText((c) => c.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("Example App")));
-    fireEvent.click(screen.getByText((c) => c.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((c) => c.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     // Open preview
     await waitFor(() => screen.getByText("Preview Sources"));
@@ -1277,14 +1273,7 @@ describe("DashboardApp", () => {
       }
     });
     render(<DashboardApp />);
-    await screen.findByText((c) => c.includes(longSiteKey));
-
-    // Expand to reach version
-    fireEvent.click(screen.getByText((c) => c.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("Example App")));
-    fireEvent.click(screen.getByText((c) => c.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((c) => c.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     // Should show empty files but not error
     await waitFor(() => {
@@ -1305,14 +1294,7 @@ describe("DashboardApp", () => {
       ],
     });
     render(<DashboardApp />);
-    await screen.findByText((c) => c.includes(longSiteKey));
-
-    // Expand all
-    fireEvent.click(screen.getByText((c) => c.includes(longSiteKey)).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("Example App")));
-    fireEvent.click(screen.getByText((c) => c.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((c) => c.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
 
     // Both files should render under the same host folder (folder-exists branch covered)
     await waitFor(() => screen.getByText(/2 files/));
@@ -1333,14 +1315,7 @@ describe("DashboardApp", () => {
       ],
     });
     render(<DashboardApp />);
-    const siteKeyTexts = await screen.findAllByText((c) => c.includes(longSiteKey));
-
-    // Expand to version panel - click the first match (history collapse, not distribution card)
-    fireEvent.click(siteKeyTexts[0].closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("Example App")));
-    fireEvent.click(screen.getByText((c) => c.includes("Example App")).closest(".ant-collapse-header"));
-    await waitFor(() => screen.getByText((c) => c.includes("v1.0.0-beta")));
-    fireEvent.click(screen.getByText((c) => c.includes("v1.0.0-beta")).closest(".ant-collapse-header"));
+    await openVersionPanel();
     await waitFor(() => screen.getByText(/2 files/));
 
     // Click preview button

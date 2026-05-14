@@ -17,6 +17,7 @@ import {
   state,
   versionLabel,
   buildSignatureFromRefs,
+  findBestVersionMatch,
 } from "./shared.mjs";
 import {
   ensureStorageReady,
@@ -102,6 +103,96 @@ function rebuildVersionMetaFromRefs(meta, refs, siteKey) {
   });
 }
 
+function signatureTokens(signature) {
+  return String(signature || "").split("|").filter(Boolean);
+}
+
+function timeValue(value) {
+  const stamp = new Date(value || 0).getTime();
+  return Number.isFinite(stamp) ? stamp : 0;
+}
+
+function metaSortValue(meta) {
+  return timeValue(meta.createdAt) || timeValue(meta.lastSeenAt);
+}
+
+function compareMetaByTimeline(a, b) {
+  return metaSortValue(a) - metaSortValue(b)
+    || timeValue(a.lastSeenAt) - timeValue(b.lastSeenAt)
+    || String(a.id || "").localeCompare(String(b.id || ""));
+}
+
+function findBestCompactionMatch(metaMap, ids, signature) {
+  const candidateTokens = signatureTokens(signature);
+  if (!candidateTokens.length) return null;
+
+  const candidateSet = new Set(candidateTokens);
+  let supersetId = null;
+  let bestExtraCount = Infinity;
+
+  for (const id of ids) {
+    const meta = metaMap[id];
+    if (!meta?.signature) continue;
+    if (meta.signature === signature) return id;
+
+    const existingTokens = signatureTokens(meta.signature);
+    if (existingTokens.length <= candidateTokens.length) continue;
+
+    const existingSet = new Set(existingTokens);
+    let isSuperset = true;
+    for (const token of candidateSet) {
+      if (!existingSet.has(token)) {
+        isSuperset = false;
+        break;
+      }
+    }
+    if (!isSuperset) continue;
+
+    const extraCount = existingTokens.length - candidateTokens.length;
+    if (extraCount < bestExtraCount) {
+      bestExtraCount = extraCount;
+      supersetId = id;
+    }
+  }
+
+  return supersetId;
+}
+
+function mergeCompactedMeta(targetMeta, incomingMeta) {
+  const targetCreated = timeValue(targetMeta.createdAt);
+  const incomingCreated = timeValue(incomingMeta.createdAt);
+  const targetSeen = timeValue(targetMeta.lastSeenAt || targetMeta.createdAt);
+  const incomingSeen = timeValue(incomingMeta.lastSeenAt || incomingMeta.createdAt);
+  const useIncomingDisplay = incomingSeen >= targetSeen;
+
+  return Object.assign({}, targetMeta, {
+    createdAt: targetCreated && incomingCreated
+      ? (incomingCreated < targetCreated ? incomingMeta.createdAt : targetMeta.createdAt)
+      : (targetMeta.createdAt || incomingMeta.createdAt),
+    lastSeenAt: incomingSeen > targetSeen
+      ? (incomingMeta.lastSeenAt || incomingMeta.createdAt || targetMeta.lastSeenAt)
+      : (targetMeta.lastSeenAt || incomingMeta.lastSeenAt || incomingMeta.createdAt),
+    title: useIncomingDisplay && incomingMeta.title ? incomingMeta.title : targetMeta.title,
+    tabId: useIncomingDisplay && incomingMeta.tabId != null ? incomingMeta.tabId : targetMeta.tabId,
+    pageUrl: canonicalPageUrl(targetMeta.pageUrl || incomingMeta.pageUrl || ""),
+    siteKey: targetMeta.siteKey || incomingMeta.siteKey || pageSiteKey(targetMeta.pageUrl || incomingMeta.pageUrl || ""),
+  });
+}
+
+function hasVersionMetaChanged(previousMeta, nextMeta) {
+  if (!previousMeta) return true;
+  return previousMeta.pageUrl !== nextMeta.pageUrl
+    || previousMeta.siteKey !== nextMeta.siteKey
+    || previousMeta.signature !== nextMeta.signature
+    || previousMeta.byteSize !== nextMeta.byteSize
+    || previousMeta.mapCount !== nextMeta.mapCount
+    || previousMeta.fileCount !== nextMeta.fileCount
+    || previousMeta.title !== nextMeta.title
+    || previousMeta.tabId !== nextMeta.tabId
+    || previousMeta.lastSeenAt !== nextMeta.lastSeenAt
+    || JSON.stringify(previousMeta.mapUrls || []) !== JSON.stringify(nextMeta.mapUrls || []);
+}
+
 function putBlobRecordWithRefCount(blobStore, blobId, nextCount, fallbackRecord) {
   if (fallbackRecord && fallbackRecord.content != null) {
     blobStore.put({
@@ -182,6 +273,7 @@ export function persistVersionState(nextMeta, nextRefs, nextBlobs, previousMeta)
 
             if (nextCount <= 0) {
               delete state.blobIndex[blobId];
+              delete state.blobSiteIndex[blobId];
               return;
             }
 
@@ -198,6 +290,29 @@ export function persistVersionState(nextMeta, nextRefs, nextBlobs, previousMeta)
             };
           });
 
+          nextRefs.forEach((ref) => {
+            if (ref?.blobId) state.blobSiteIndex[ref.blobId] = nextMeta.siteKey || pageSiteKey(nextMeta.pageUrl);
+          });
+
+          resolve();
+        };
+        /* v8 ignore start -- platform transaction failure hooks are not meaningful unit-test targets */
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+        /* v8 ignore stop */
+      });
+    });
+}
+
+export function touchVersionMeta(nextMeta) {
+    return ensureStorageReady().then((db) => {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([VERSION_STORE], "readwrite");
+        const versionStore = tx.objectStore(VERSION_STORE);
+        versionStore.put(nextMeta);
+
+        tx.oncomplete = () => {
+          state.versionIndex[nextMeta.id] = nextMeta;
           resolve();
         };
         /* v8 ignore start -- platform transaction failure hooks are not meaningful unit-test targets */
@@ -250,8 +365,12 @@ export function deleteVersions(versionIds) {
           Object.keys(deltaByBlob).forEach((blobId) => {
             const current = state.blobIndex[blobId];
             const nextCount = (current ? current.refCount : 0) + deltaByBlob[blobId];
-            if (nextCount <= 0) delete state.blobIndex[blobId];
-            else state.blobIndex[blobId] = Object.assign({}, current, { refCount: nextCount });
+            if (nextCount <= 0) {
+              delete state.blobIndex[blobId];
+              delete state.blobSiteIndex[blobId];
+            } else {
+              state.blobIndex[blobId] = Object.assign({}, current, { refCount: nextCount });
+            }
           });
           resolve();
         };
@@ -295,6 +414,7 @@ export function loadVersionFiles(versionId) {
         return {
           url: ref.mapUrl,
           content,
+          refCount: ref.blobId ? Math.max(1, Number(state.blobIndex[ref.blobId]?.refCount) || 0) : 1,
           page: {
             url: meta.pageUrl,
             title: meta.title,
@@ -382,16 +502,18 @@ export function distributionSummary() {
 
   Object.keys(state.blobIndex).forEach((blobId) => {
     const blob = state.blobIndex[blobId];
-    if (!bySite[blob.siteKey]) {
-      bySite[blob.siteKey] = {
-        siteKey: blob.siteKey,
+    const ownerSiteKey = state.blobSiteIndex[blobId] || (bySite[blob.siteKey] ? blob.siteKey : null);
+    if (!ownerSiteKey) return;
+    if (!bySite[ownerSiteKey]) {
+      bySite[ownerSiteKey] = {
+        siteKey: ownerSiteKey,
         versionCount: 0,
         mapCount: 0,
         byteSize: 0,
       };
     }
-    bySite[blob.siteKey].mapCount++;
-    bySite[blob.siteKey].byteSize += blob.byteSize || 0;
+    bySite[ownerSiteKey].mapCount++;
+    bySite[ownerSiteKey].byteSize += blob.byteSize || 0;
   });
 
   return Object.keys(bySite).sort().map((key) => bySite[key]);
@@ -463,11 +585,20 @@ export async function importSourceMapsForPage(payload) {
   }
 
   const signature = buildSignatureFromRefs(refs);
-  const existingId = ensurePageBucket(pageUrl).find((id) => {
-    return state.versionIndex[id] && state.versionIndex[id].signature === signature;
-  });
+  const { exactId, supersetId } = findBestVersionMatch(pageUrl, signature);
+  const existingId = exactId || supersetId;
 
   if (existingId) {
+    const previousMeta = state.versionIndex[existingId];
+    if (previousMeta) {
+      const nextMeta = Object.assign({}, previousMeta, {
+        title: title || previousMeta.title,
+        lastSeenAt: now,
+      });
+      await touchVersionMeta(nextMeta);
+      sortPageVersions(pageUrl);
+      refreshBadgeForActiveTab();
+    }
     return {
       ok: true,
       reusedExisting: true,
@@ -557,13 +688,15 @@ export function buildCompactedStorageState(db, metas) {
     const entries = results[0];
     const existingBlobs = results[1];
     const existingBlobMap = {};
+    const invalidVersionMap = {};
+    const recoveredRefsByVersion = {};
+    const originalMetaById = {};
     const desiredRefs = [];
     const desiredBlobs = {};
     const desiredVersionMap = {};
-    const invalidVersionMap = {};
-    const validRefsByVersion = {};
+    const desiredRefsByVersion = {};
+    const desiredIdsByPage = {};
     let upgradedRefs = 0;
-    let upgradedVersions = 0;
 
     existingBlobs.forEach((blob) => {
       existingBlobMap[blob.id] = blob;
@@ -594,71 +727,115 @@ export function buildCompactedStorageState(db, metas) {
       }
 
       mapHash = await hashString(content);
-      let blobId = blobStoreKey(siteKey, mapHash);
-      blobId = uniqueBlobId(desiredBlobs, blobId, content);
-
       const nextRef = {
-        versionId: meta.id,
         mapUrl: entry.mapUrl,
         siteKey,
         mapHash,
-        blobId,
         byteSize: content.length,
+        content,
+        legacy: {
+          upgradedFromString: typeof value === "string",
+          mapHash: value && typeof value !== "string" ? value._legacyMapHash : null,
+          blobId: value && typeof value !== "string" ? value._legacyBlobId : null,
+        },
       };
 
-      if (value && typeof value !== "string") {
-        if (value._legacyMapHash !== mapHash || value._legacyBlobId !== blobId) {
-          upgradedRefs++;
-        }
-      }
-
-      desiredRefs.push({
-        key: entry.key,
-        value: nextRef,
-      });
-
-      if (!validRefsByVersion[meta.id]) validRefsByVersion[meta.id] = [];
-      validRefsByVersion[meta.id].push(nextRef);
-
-      if (!desiredBlobs[blobId]) {
-        desiredBlobs[blobId] = {
-          id: blobId,
-          siteKey,
-          mapHash,
-          byteSize: content.length,
-          content,
-          createdAt: (existingBlobMap[blobId] && existingBlobMap[blobId].createdAt) || meta.createdAt || meta.lastSeenAt || new Date().toISOString(),
-          refCount: 0,
-        };
-      }
-      desiredBlobs[blobId].refCount++;
+      if (!recoveredRefsByVersion[meta.id]) recoveredRefsByVersion[meta.id] = [];
+      recoveredRefsByVersion[meta.id].push(nextRef);
     }
 
-    metas.forEach((meta) => {
-      const refs = validRefsByVersion[meta.id] || [];
+    metas.slice().sort(compareMetaByTimeline).forEach((meta) => {
+      originalMetaById[meta.id] = meta;
+      const refs = recoveredRefsByVersion[meta.id] || [];
       if (refs.length === 0) {
         invalidVersionMap[meta.id] = {
           id: meta.id,
-          pageUrl: meta.pageUrl,
+          pageUrl: canonicalPageUrl(meta.pageUrl),
           reason: "all_maps_missing",
           mapCount: meta.mapUrls ? meta.mapUrls.length : 0,
         };
         return;
       }
-      const nextMeta = rebuildVersionMetaFromRefs(meta, refs, meta.siteKey || pageSiteKey(meta.pageUrl));
-      if (
-        nextMeta.signature !== meta.signature
-        || nextMeta.byteSize !== meta.byteSize
-        || JSON.stringify(nextMeta.mapUrls || []) !== JSON.stringify(meta.mapUrls || [])
-        || nextMeta.mapCount !== meta.mapCount
-      ) {
-        upgradedVersions++;
+
+      const normalizedPageUrl = canonicalPageUrl(meta.pageUrl || "");
+      const normalizedSiteKey = meta.siteKey || pageSiteKey(normalizedPageUrl);
+      const nextMeta = rebuildVersionMetaFromRefs(
+        Object.assign({}, meta, {
+          pageUrl: normalizedPageUrl,
+          siteKey: normalizedSiteKey,
+        }),
+        refs,
+        normalizedSiteKey,
+      );
+      const pageIds = desiredIdsByPage[normalizedPageUrl] || [];
+      const matchedId = findBestCompactionMatch(desiredVersionMap, pageIds, nextMeta.signature);
+      if (matchedId) {
+        desiredVersionMap[matchedId] = mergeCompactedMeta(desiredVersionMap[matchedId], nextMeta);
+        return;
       }
+
       desiredVersionMap[meta.id] = nextMeta;
+      desiredRefsByVersion[meta.id] = refs.slice().sort((a, b) => a.mapUrl.localeCompare(b.mapUrl));
+      if (!desiredIdsByPage[normalizedPageUrl]) desiredIdsByPage[normalizedPageUrl] = [];
+      desiredIdsByPage[normalizedPageUrl].push(meta.id);
     });
 
+    Object.keys(desiredVersionMap).forEach((id) => {
+      const meta = desiredVersionMap[id];
+      const refs = desiredRefsByVersion[id] || [];
+      const finalizedRefs = [];
+
+      refs.forEach((ref) => {
+        let blobId = blobStoreKey(meta.siteKey, ref.mapHash);
+        blobId = uniqueBlobId(desiredBlobs, blobId, ref.content);
+
+        const storedRef = {
+          versionId: id,
+          mapUrl: ref.mapUrl,
+          siteKey: meta.siteKey,
+          mapHash: ref.mapHash,
+          blobId,
+          byteSize: ref.byteSize,
+        };
+        desiredRefs.push({
+          key: mapStoreKey(id, ref.mapUrl),
+          value: storedRef,
+        });
+        finalizedRefs.push(storedRef);
+
+        if (!desiredBlobs[blobId]) {
+          desiredBlobs[blobId] = {
+            id: blobId,
+            siteKey: meta.siteKey,
+            mapHash: ref.mapHash,
+            byteSize: ref.byteSize,
+            content: ref.content,
+            createdAt: (existingBlobMap[blobId] && existingBlobMap[blobId].createdAt) || meta.createdAt || meta.lastSeenAt || new Date().toISOString(),
+            refCount: 0,
+          };
+        }
+        desiredBlobs[blobId].refCount++;
+
+        if (
+          ref.legacy?.upgradedFromString
+          || ref.legacy?.mapHash !== storedRef.mapHash
+          || ref.legacy?.blobId !== storedRef.blobId
+        ) {
+          upgradedRefs++;
+        }
+      });
+
+      const finalizedMeta = rebuildVersionMetaFromRefs(meta, finalizedRefs, meta.siteKey || pageSiteKey(meta.pageUrl));
+      desiredVersionMap[id] = finalizedMeta;
+    });
+
+    const desiredMetas = Object.keys(desiredVersionMap).map((id) => desiredVersionMap[id]);
+    const upgradedVersions = desiredMetas.reduce((count, meta) => {
+      return count + (hasVersionMetaChanged(originalMetaById[meta.id], meta) ? 1 : 0);
+    }, 0);
+
     return {
-      desiredMetas: Object.keys(desiredVersionMap).map((id) => desiredVersionMap[id]),
+      desiredMetas,
       desiredRefs,
       desiredBlobs: Object.keys(desiredBlobs).map((blobId) => desiredBlobs[blobId]),
       invalidVersions: Object.keys(invalidVersionMap).map((id) => invalidVersionMap[id]),
@@ -678,9 +855,9 @@ export function compactStorageData() {
     const beforeBytes = totalStorageBytes();
 
     return buildCompactedStorageState(db, metas).then((storageState) => {
-      const invalidMap = {};
-      storageState.invalidVersions.forEach((item) => {
-        invalidMap[item.id] = true;
+      const desiredIdMap = {};
+      storageState.desiredMetas.forEach((meta) => {
+        desiredIdMap[meta.id] = true;
       });
 
       return new Promise((resolve, reject) => {
@@ -693,19 +870,15 @@ export function compactStorageData() {
         blobStore.clear();
 
         metas.forEach((meta) => {
-          if (invalidMap[meta.id]) versionStore.delete(meta.id);
+          if (!desiredIdMap[meta.id]) versionStore.delete(meta.id);
         });
 
         storageState.desiredMetas.forEach((meta) => {
-          if (!invalidMap[meta.id]) {
-            versionStore.put(meta);
-          }
+          versionStore.put(meta);
         });
 
         storageState.desiredRefs.forEach((entry) => {
-          if (!invalidMap[entry.value.versionId]) {
-            mapStore.put(entry.value, entry.key);
-          }
+          mapStore.put(entry.value, entry.key);
         });
 
         storageState.desiredBlobs.forEach((blob) => {
@@ -718,17 +891,30 @@ export function compactStorageData() {
         tx.onabort = () => reject(tx.error);
         /* v8 ignore stop */
       });
-    }).then((storageState) => Promise.all([listAllVersionsRaw(db), listAllBlobsRaw(db)]).then((results) => {
-      rebuildIndexes(results[0] || [], results[1] || []);
+    }).then((storageState) => Promise.all([
+      listAllVersionsRaw(db),
+      listAllBlobsRaw(db),
+      loadStoredMapEntriesRaw(db, storageState.desiredMetas),
+    ]).then((results) => {
+      const versions = results[0] || [];
+      const blobs = results[1] || [];
+      const entries = results[2] || [];
+      const blobSiteIndex = {};
+      entries.forEach((entry) => {
+        const siteKey = entry.meta?.siteKey || pageSiteKey(entry.meta?.pageUrl);
+        if (!siteKey || typeof entry.value === "string") return;
+        if (entry.value?.blobId) blobSiteIndex[entry.value.blobId] = siteKey;
+      });
+      rebuildIndexes(versions, blobs, blobSiteIndex);
       refreshBadgeForActiveTab();
       return {
         invalidVersions: storageState.invalidVersions,
         stats: {
-          removedVersions: Math.max(0, beforeVersionCount - results[0].length),
-          removedMaps: Math.max(0, beforeMapCount - results[1].length),
+          removedVersions: Math.max(0, beforeVersionCount - versions.length),
+          removedMaps: Math.max(0, beforeMapCount - blobs.length),
           reclaimedBytes: Math.max(0, beforeBytes - totalStorageBytes()),
-          remainingVersions: results[0].length,
-          remainingMaps: results[1].length,
+          remainingVersions: versions.length,
+          remainingMaps: blobs.length,
           remainingBytes: totalStorageBytes(),
           upgradedRefs: Number(storageState.migration?.upgradedRefs) || 0,
           upgradedVersions: Number(storageState.migration?.upgradedVersions) || 0,

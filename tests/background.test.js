@@ -728,6 +728,7 @@ describe("session persistence regressions", () => {
         currentSettings: vi.fn(() => ({ autoCleanup: false })),
         persistVersionState: vi.fn(() => Promise.resolve()),
         prunePageHistory: vi.fn(() => Promise.resolve()),
+        touchVersionMeta: vi.fn(() => Promise.resolve()),
       };
     });
 
@@ -775,10 +776,143 @@ describe("session persistence regressions", () => {
 
     await sessions.upsertSessionVersion(session);
 
-    expect(storage.persistVersionState).toHaveBeenCalledTimes(1);
-    const nextMeta = storage.persistVersionState.mock.calls[0][0];
+    expect(storage.persistVersionState).not.toHaveBeenCalled();
+    expect(storage.touchVersionMeta).toHaveBeenCalledTimes(1);
+    const nextMeta = storage.touchVersionMeta.mock.calls[0][0];
     expect(nextMeta.id).toBe("existing");
     expect(new Date(nextMeta.lastSeenAt).getTime()).toBeGreaterThan(new Date("2026-01-01T00:00:00.000Z").getTime());
+  });
+
+  it("reuses the smallest existing superset instead of creating a subset-only version", async () => {
+    vi.doMock("../src/background/storage.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage.mjs");
+      return {
+        ...actual,
+        broadcastSummary: vi.fn(),
+        currentSettings: vi.fn(() => ({ autoCleanup: false })),
+        persistVersionState: vi.fn(() => Promise.resolve()),
+        prunePageHistory: vi.fn(() => Promise.resolve()),
+        touchVersionMeta: vi.fn(() => Promise.resolve()),
+      };
+    });
+
+    vi.doUnmock("../src/background/sessions.mjs");
+
+    const shared = await import("../src/background/shared.mjs");
+    const sessions = await import("../src/background/sessions.mjs");
+    const storage = await import("../src/background/storage.mjs");
+    const mapAHash = await shared.hashString("map-a");
+    const mapBHash = await shared.hashString("map-b");
+    const mapCHash = await shared.hashString("map-c");
+
+    shared.state.versionIndex = {
+      supersetSmall: {
+        id: "supersetSmall",
+        pageUrl: "https://example.com/app",
+        siteKey: "https://example.com",
+        title: "Superset small",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        lastSeenAt: "2026-01-01T00:00:00.000Z",
+        signature: `https://example.com/a.map#${mapAHash}|https://example.com/b.map#${mapBHash}`,
+        mapUrls: ["https://example.com/a.map", "https://example.com/b.map"],
+        mapCount: 2,
+        fileCount: 2,
+        byteSize: 20,
+        tabId: 1,
+      },
+      supersetLarge: {
+        id: "supersetLarge",
+        pageUrl: "https://example.com/app",
+        siteKey: "https://example.com",
+        title: "Superset large",
+        createdAt: "2026-01-02T00:00:00.000Z",
+        lastSeenAt: "2026-01-02T00:00:00.000Z",
+        signature: `https://example.com/a.map#${mapAHash}|https://example.com/b.map#${mapBHash}|https://example.com/c.map#${mapCHash}`,
+        mapUrls: ["https://example.com/a.map", "https://example.com/b.map", "https://example.com/c.map"],
+        mapCount: 3,
+        fileCount: 3,
+        byteSize: 30,
+        tabId: 1,
+      },
+    };
+    shared.state.versionsByPage = {
+      "https://example.com/app": ["supersetLarge", "supersetSmall"],
+    };
+    shared.state.tabSessions = {};
+
+    const session = {
+      tabId: 1,
+      pageUrl: "https://example.com/app",
+      title: "Example subset",
+      maps: {
+        "https://example.com/a.map": "map-a",
+      },
+      versionId: null,
+      versionOwned: false,
+      signature: null,
+      timer: null,
+    };
+
+    await sessions.upsertSessionVersion(session);
+
+    expect(storage.persistVersionState).not.toHaveBeenCalled();
+    expect(storage.touchVersionMeta).toHaveBeenCalledTimes(1);
+    expect(storage.touchVersionMeta.mock.calls[0][0]).toEqual(expect.objectContaining({
+      id: "supersetSmall",
+      title: "Example subset",
+    }));
+    expect(session.versionId).toBe("supersetSmall");
+    expect(shared.state.versionsByPage["https://example.com/app"]).toHaveLength(2);
+  });
+
+  it("groups different query strings under the same page while still creating distinct versions when files differ", async () => {
+    vi.doMock("../src/background/storage.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage.mjs");
+      return {
+        ...actual,
+        broadcastSummary: vi.fn(),
+        currentSettings: vi.fn(() => ({ autoCleanup: false })),
+        persistVersionState: vi.fn(() => Promise.resolve()),
+        prunePageHistory: vi.fn(() => Promise.resolve()),
+        touchVersionMeta: vi.fn(() => Promise.resolve()),
+      };
+    });
+
+    vi.doUnmock("../src/background/sessions.mjs");
+
+    const shared = await import("../src/background/shared.mjs");
+    const sessions = await import("../src/background/sessions.mjs");
+    const storage = await import("../src/background/storage.mjs");
+
+    shared.state.versionIndex = {};
+    shared.state.versionsByPage = {};
+    shared.state.tabSessions = {};
+
+    const firstSession = sessions.getOrCreateSession({
+      id: 1,
+      url: "https://example.com/app?foo=1",
+      title: "Example foo=1",
+    });
+    firstSession.maps = {
+      "https://example.com/a.map": "map-a",
+    };
+    const secondSession = sessions.getOrCreateSession({
+      id: 2,
+      url: "https://example.com/app?foo=2",
+      title: "Example foo=2",
+    });
+    secondSession.maps = {
+      "https://example.com/b.map": "map-b",
+    };
+
+    await sessions.upsertSessionVersion(firstSession);
+    await sessions.upsertSessionVersion(secondSession);
+
+    expect(storage.persistVersionState).toHaveBeenCalledTimes(2);
+    expect(shared.state.versionsByPage["https://example.com/app"]).toHaveLength(2);
+    expect(firstSession.pageUrl).toBe("https://example.com/app");
+    expect(secondSession.pageUrl).toBe("https://example.com/app");
+    expect(Object.values(shared.state.versionIndex).every((meta) => meta.pageUrl === "https://example.com/app")).toBe(true);
   });
 
   it("does not leave a new version in memory when persistence fails", async () => {
@@ -790,6 +924,7 @@ describe("session persistence regressions", () => {
         currentSettings: vi.fn(() => ({ autoCleanup: false })),
         persistVersionState: vi.fn(() => Promise.reject(new Error("persist exploded"))),
         prunePageHistory: vi.fn(() => Promise.resolve()),
+        touchVersionMeta: vi.fn(() => Promise.resolve()),
       };
     });
 
@@ -829,6 +964,7 @@ describe("session persistence regressions", () => {
         currentSettings: vi.fn(() => ({ autoCleanup: true })),
         persistVersionState: vi.fn(() => Promise.resolve()),
         prunePageHistory: vi.fn(() => Promise.reject(new Error("prune exploded"))),
+        touchVersionMeta: vi.fn(() => Promise.resolve()),
       };
     });
 
@@ -876,6 +1012,7 @@ describe("session persistence regressions", () => {
         currentSettings: vi.fn(() => ({ autoCleanup: false })),
         persistVersionState: vi.fn(() => Promise.resolve()),
         prunePageHistory: vi.fn(() => Promise.resolve()),
+        touchVersionMeta: vi.fn(() => Promise.resolve()),
       };
     });
 
@@ -901,6 +1038,7 @@ describe("session persistence regressions", () => {
         currentSettings: vi.fn(() => ({ autoCleanup: false })),
         persistVersionState: vi.fn(() => Promise.resolve()),
         prunePageHistory: vi.fn(() => Promise.resolve()),
+        touchVersionMeta: vi.fn(() => Promise.resolve()),
       };
     });
 
