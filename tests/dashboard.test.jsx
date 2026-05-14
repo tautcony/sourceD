@@ -181,7 +181,7 @@ describe("DashboardApp", () => {
     render(<DashboardApp />);
     await screen.findByText((content) => content.includes(longSiteKey));
     expect(screen.getByRole("img", { name: "Storage distribution pie chart" })).toBeInTheDocument();
-    expect(screen.getByText("5 versions · 12 maps · 100.00 KB")).toBeInTheDocument();
+    expect(screen.getByText("5 versions · 12 maps · 100.00 KiB")).toBeInTheDocument();
   });
 
   it("distribution legend uses ellipsis for long site keys", async () => {
@@ -373,7 +373,7 @@ describe("DashboardApp", () => {
     const { container } = render(<DashboardApp />);
     await screen.findByText("5");
     // Check storage display
-    expect(screen.getByText("1.00 MB")).toBeInTheDocument();
+    expect(screen.getByText("1.00 MiB")).toBeInTheDocument();
     // Check statistic values exist in card containers
     const statValues = container.querySelectorAll(".ant-statistic-content-value-int");
     const values = Array.from(statValues).map((el) => el.textContent);
@@ -385,15 +385,15 @@ describe("DashboardApp", () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
     await screen.findByText(/1 versions/);
-    expect(screen.getByText("1 versions · 3 maps · 1.00 KB")).toBeInTheDocument();
+    expect(screen.getByText("1 versions · 3 maps · 1.00 KiB")).toBeInTheDocument();
   });
 
   it("renders distribution byte sizes", async () => {
     mockDashboardData({ distribution: mockDistribution });
     render(<DashboardApp />);
-    await screen.findByText("5 versions · 12 maps · 100.00 KB");
-    expect(screen.getByText("5 versions · 12 maps · 100.00 KB")).toBeInTheDocument();
-    expect(screen.getByText("3 versions · 8 maps · 50.00 KB")).toBeInTheDocument();
+    await screen.findByText("5 versions · 12 maps · 100.00 KiB");
+    expect(screen.getByText("5 versions · 12 maps · 100.00 KiB")).toBeInTheDocument();
+    expect(screen.getByText("3 versions · 8 maps · 50.00 KiB")).toBeInTheDocument();
   });
 
   it("handles cleanup with no issues found", async () => {
@@ -532,8 +532,8 @@ describe("DashboardApp", () => {
   it("renders multiple distribution legend rows", async () => {
     mockDashboardData({ distribution: mockDistribution });
     render(<DashboardApp />);
-    await screen.findByText("3 versions · 8 maps · 50.00 KB");
-    expect(screen.getByText("3 versions · 8 maps · 50.00 KB")).toBeInTheDocument();
+    await screen.findByText("3 versions · 8 maps · 50.00 KiB");
+    expect(screen.getByText("3 versions · 8 maps · 50.00 KiB")).toBeInTheDocument();
   });
 
   it("CSS injection includes tree node fix", () => {
@@ -549,7 +549,7 @@ describe("DashboardApp", () => {
     render(<DashboardApp />);
     await expandDomain();
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Example App With A Very Long Title");
-    expect(screen.getByText("1 versions · 3 maps · 1.00 KB")).toBeInTheDocument();
+    expect(screen.getByText("1 versions · 3 maps · 1.00 KiB")).toBeInTheDocument();
   });
 
   it("renders version count tag in domain header", async () => {

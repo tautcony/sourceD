@@ -83,6 +83,7 @@ export function buildMetaForSession(session, artifacts, versionId) {
     mapCount: artifacts.mapUrls.length,
     fileCount: artifacts.mapUrls.length,
     byteSize: artifacts.byteSize,
+    storedByteSize: artifacts.byteSize,
     tabId: session.tabId,
   };
 }

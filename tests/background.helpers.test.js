@@ -174,14 +174,15 @@ describe("background shared helpers", () => {
     );
 
     expect(shared.state.versionsByPage["https://example.com/a"]).toEqual(["v2", "v1"]);
-    expect(shared.state.blobIndex["blob-1"]).toEqual({
+    expect(shared.state.blobIndex["blob-1"]).toEqual(expect.objectContaining({
       id: "blob-1",
       siteKey: "https://example.com",
       mapHash: "h1",
       byteSize: 10,
       createdAt: "2026-01-01T00:00:00.000Z",
       refCount: 2,
-    });
+      compression: "identity",
+    }));
 
     shared.rebuildIndexes([
       { id: "solo", pageUrl: "https://example.com/solo", createdAt: "2026-03-01T00:00:00.000Z" },
@@ -490,6 +491,7 @@ describe("background storage helpers", () => {
       maxVersionsPerPage: 10,
       autoCleanup: true,
       detectionEnabled: true,
+      sizeDisplayMode: "uncompressed",
       ignoredDomains: [],
       fetchDelayMs: 300,
       fetchTimeoutMs: 30_000,
@@ -660,6 +662,20 @@ describe("background storage helpers", () => {
     ]));
     expect(storage.totalStorageBytes()).toBeGreaterThan(0);
 
+    shared.state.settings = Object.assign({}, shared.state.settings, { sizeDisplayMode: "compressed" });
+    expect(storage.summarizePages()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        pageUrl: "https://example.com/app",
+        versions: expect.arrayContaining([
+          expect.objectContaining({ storedByteSize: expect.any(Number), byteSize: expect.any(Number) }),
+        ]),
+      }),
+    ]));
+    expect(storage.distributionSummary()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ siteKey: "https://example.com", byteSize: expect.any(Number) }),
+    ]));
+    expect(storage.totalStorageBytes()).toBeGreaterThan(0);
+
     await storage.prunePageHistory("https://none.test");
 
     shared.state.versionIndex.newer = {
@@ -757,7 +773,58 @@ describe("background storage helpers", () => {
       expect.objectContaining({ url: "a.map", content: "raw-map-a", refCount: 1 }),
       expect.objectContaining({ url: "b.map", content: "blob-map-b", refCount: 3 }),
     ]));
+    const versionFileSummaries = await storage.loadVersionFiles("v1", { includeContent: false });
+    expect(versionFileSummaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ url: "a.map", byteSize: expect.any(Number), refCount: 1 }),
+      expect.objectContaining({ url: "b.map", byteSize: 4, refCount: 3 }),
+    ]));
+    expect(versionFileSummaries.every((file) => file.content == null)).toBe(true);
     expect(await storage.loadVersionFiles("missing")).toEqual([]);
+  });
+
+  it("stores large blobs with compression metadata and reads them back transparently", async () => {
+    const storage = await import("../src/background/storage.mjs");
+    const shared = await import("../src/background/shared.mjs");
+    const dbModule = await import("../src/background/db.mjs");
+    const db = createInMemoryDb();
+
+    shared.state.dbPromise = null;
+    shared.state.storageReadyPromise = null;
+    globalThis.indexedDB = {
+      open: vi.fn(() => {
+        const req = { result: db, error: null, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+        queueMicrotask(() => {
+          req.onupgradeneeded?.();
+          req.onsuccess?.();
+        });
+        return req;
+      }),
+    };
+
+    const largeContent = JSON.stringify({
+      version: 3,
+      sources: ["src/app.js"],
+      sourcesContent: [`const repeated = "${"x".repeat(4096)}";`],
+    });
+
+    const created = await storage.importSourceMapsForPage({
+      pageUrl: "https://example.com/compressed",
+      files: [{ mapUrl: "big.map", content: largeContent }],
+    });
+    expect(created.ok).toBe(true);
+
+    const ref = db.stores.versionMaps.get(`${created.versionId}::big.map`);
+    const blob = db.stores.mapBlobs.get(ref.blobId);
+    expect(blob).toEqual(expect.objectContaining({
+      compression: "gzip",
+      storedByteSize: expect.any(Number),
+      contentByteSize: expect.any(Number),
+    }));
+    expect(blob.storedByteSize).toBeLessThan(blob.contentByteSize);
+
+    await expect(dbModule.loadBlobContentsRaw(db, [ref.blobId])).resolves.toEqual({
+      [ref.blobId]: largeContent,
+    });
   });
 
   it("covers index removal and compaction stats", async () => {

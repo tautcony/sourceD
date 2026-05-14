@@ -65,19 +65,19 @@ describe("fileSizeIEC", () => {
   });
 
   it("formats kilobytes", () => {
-    expect(fileSizeIEC(1024)).toBe("1.00 KB");
+    expect(fileSizeIEC(1024)).toBe("1.00 KiB");
   });
 
   it("formats megabytes", () => {
-    expect(fileSizeIEC(1048576)).toBe("1.00 MB");
+    expect(fileSizeIEC(1048576)).toBe("1.00 MiB");
   });
 
   it("formats gigabytes", () => {
-    expect(fileSizeIEC(1073741824)).toBe("1.00 GB");
+    expect(fileSizeIEC(1073741824)).toBe("1.00 GiB");
   });
 
   it("handles fractional sizes", () => {
-    expect(fileSizeIEC(1536)).toBe("1.50 KB");
+    expect(fileSizeIEC(1536)).toBe("1.50 KiB");
   });
 });
 

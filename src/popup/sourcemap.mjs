@@ -139,34 +139,39 @@ function appendFilesToZip(zip, files, contentMap, pathPrefix) {
   return { added: added, errors: errors };
 }
 
+function parseEmbeddedSourceMap(rawSourceMap) {
+  if (!rawSourceMap) return null;
+  try {
+    var payload = String(rawSourceMap).replace(/^\)\]\}'\s*/, "");
+    var parsed = JSON.parse(payload);
+    if (!Array.isArray(parsed.sources) || !Array.isArray(parsed.sourcesContent)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Single file download ─────────────────────────────────────────────────────
 
 export function extractSourceFiles(files) {
   var seen = {};
   var result = [];
   for (var i = 0; i < files.length; i++) {
-    var consumer;
-    try {
-      var rawSourceMap = files[i].content;
-      if (!rawSourceMap) continue;
-      consumer = new SourceMapConsumer(rawSourceMap);
-      consumer.sources.forEach(function (src) {
-        if (!isUserSourceFile(src)) return;
-        var content = consumer.sourceContentFor(src, true);
-        if (!content) return;
-        var dest = normalizeSourcePath(src);
-        /* c8 ignore next */
-        if (!dest) return;
-        if (seen[dest]) return;
-        seen[dest] = true;
-        result.push({ path: dest, content: content });
-      });
-    } catch {
-      // skip invalid source maps
-    } finally {
+    var parsed = parseEmbeddedSourceMap(files[i].content);
+    if (!parsed) continue;
+    parsed.sources.forEach(function (src, index) {
+      src = src == null ? String(src) : src;
+      if (src === "") src = "unnamed";
+      if (!isUserSourceFile(src)) return;
+      var content = parsed.sourcesContent[index];
+      if (!content) return;
+      var dest = normalizeSourcePath(src);
       /* c8 ignore next */
-      if (consumer && typeof consumer.destroy === "function") consumer.destroy();
-    }
+      if (!dest) return;
+      if (seen[dest]) return;
+      seen[dest] = true;
+      result.push({ path: dest, content: content });
+    });
   }
   return result;
 }

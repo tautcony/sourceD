@@ -124,8 +124,8 @@
     "description": "Popup stored versions stat"
   },
   "popupStorageUsed": {
-    "message": "$1 used",
-    "description": "Popup storage stat"
+    "message": "$1 source maps",
+    "description": "Popup source map size stat"
   },
   "popupOpenHistory": {
     "message": "History",
@@ -192,7 +192,7 @@
     "description": "Dashboard metric"
   },
   "dashboardTotalStorage": {
-    "message": "Storage Used",
+    "message": "Source Map Size",
     "description": "Dashboard metric"
   },
   "dashboardHistoryTitle": {
@@ -208,8 +208,20 @@
     "description": "Dashboard section title"
   },
   "dashboardDistributionCopy": {
-    "message": "Storage is summarized by origin so you can see where the archive grows fastest.",
+    "message": "Source map size is summarized by origin so you can see where the archive grows fastest.",
     "description": "Dashboard distribution description"
+  },
+  "dashboardSettingSizeDisplayMode": {
+    "message": "Map Size Display",
+    "description": "Dashboard setting label"
+  },
+  "dashboardSettingSizeDisplayUncompressed": {
+    "message": "Original sourcemap bytes",
+    "description": "Dashboard setting option"
+  },
+  "dashboardSettingSizeDisplayCompressed": {
+    "message": "Compressed sourcemap bytes",
+    "description": "Dashboard setting option"
   },
   "dashboardSettingsTitle": {
     "message": "Settings",

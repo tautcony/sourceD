@@ -29,6 +29,7 @@ import {
   loadVersionRefsRaw,
   summarizeLegacyDataStores,
 } from "./db.mjs";
+import { decodeBlobContent, encodeBlobContent } from "./compression.mjs";
 export {
   ensureStorageReady,
   getDb,
@@ -89,6 +90,41 @@ function mergeCleanupStats(baseStats, stepStats) {
   };
 }
 
+function sizeDisplayMode() {
+  return currentSettings().sizeDisplayMode === "compressed" ? "compressed" : "uncompressed";
+}
+
+function displayBytes(uncompressedBytes, compressedBytes, mode = sizeDisplayMode()) {
+  if (mode === "compressed") {
+    return Number(compressedBytes ?? uncompressedBytes) || 0;
+  }
+  return Number(uncompressedBytes ?? compressedBytes) || 0;
+}
+
+function storedBlobBytes(blob) {
+  if (!blob) return 0;
+  return Number(blob.storedByteSize ?? blob.byteSize) || 0;
+}
+
+function storedBytesForRefs(refs, blobLookup = {}) {
+  return (refs || []).reduce((sum, ref) => {
+    if (!ref) return sum;
+    if (ref.storedByteSize != null) return sum + (Number(ref.storedByteSize) || 0);
+    if (ref.blobId && blobLookup[ref.blobId]) return sum + storedBlobBytes(blobLookup[ref.blobId]);
+    return sum + (Number(ref.byteSize) || 0);
+  }, 0);
+}
+
+function withStoredByteSize(meta, refs, blobLookup = {}) {
+  return Object.assign({}, meta, {
+    storedByteSize: storedBytesForRefs(refs, blobLookup),
+  });
+}
+
+function metaDisplayByteSize(meta, mode = sizeDisplayMode()) {
+  return displayBytes(meta?.byteSize, meta?.storedByteSize, mode);
+}
+
 function rebuildVersionMetaFromRefs(meta, refs, siteKey) {
   const nextRefs = refs.slice().sort((a, b) => a.mapUrl.localeCompare(b.mapUrl));
   const mapUrls = nextRefs.map((ref) => ref.mapUrl);
@@ -99,6 +135,7 @@ function rebuildVersionMetaFromRefs(meta, refs, siteKey) {
     mapCount: mapUrls.length,
     fileCount: mapUrls.length,
     byteSize,
+    storedByteSize: meta.storedByteSize ?? byteSize,
     signature: buildSignatureFromRefs(nextRefs),
   });
 }
@@ -185,6 +222,7 @@ function hasVersionMetaChanged(previousMeta, nextMeta) {
     || previousMeta.siteKey !== nextMeta.siteKey
     || previousMeta.signature !== nextMeta.signature
     || previousMeta.byteSize !== nextMeta.byteSize
+    || previousMeta.storedByteSize !== nextMeta.storedByteSize
     || previousMeta.mapCount !== nextMeta.mapCount
     || previousMeta.fileCount !== nextMeta.fileCount
     || previousMeta.title !== nextMeta.title
@@ -200,6 +238,9 @@ function putBlobRecordWithRefCount(blobStore, blobId, nextCount, fallbackRecord)
       siteKey: fallbackRecord.siteKey,
       mapHash: fallbackRecord.mapHash,
       byteSize: fallbackRecord.byteSize || 0,
+      storedByteSize: fallbackRecord.storedByteSize ?? fallbackRecord.byteSize ?? 0,
+      contentByteSize: fallbackRecord.contentByteSize ?? fallbackRecord.byteSize ?? 0,
+      compression: fallbackRecord.compression || "identity",
       content: fallbackRecord.content,
       createdAt: fallbackRecord.createdAt || new Date().toISOString(),
       refCount: nextCount,
@@ -216,14 +257,37 @@ function putBlobRecordWithRefCount(blobStore, blobId, nextCount, fallbackRecord)
   };
 }
 
+async function prepareBlobRecordForStorage(blob) {
+  const encoded = await encodeBlobContent(blob.content);
+  return Object.assign({}, blob, {
+    compression: encoded.compression,
+    content: encoded.content,
+    storedByteSize: encoded.storedByteSize,
+    contentByteSize: encoded.contentByteSize,
+  });
+}
+
+async function prepareBlobMapForStorage(blobMap) {
+  const prepared = {};
+  await Promise.all(Object.keys(blobMap || {}).map(async (blobId) => {
+    prepared[blobId] = await prepareBlobRecordForStorage(blobMap[blobId]);
+  }));
+  return prepared;
+}
+
 export function persistVersionState(nextMeta, nextRefs, nextBlobs, previousMeta) {
   return ensureStorageReady()
     .then((db) => {
       if (!previousMeta) return { db, previousRefs: [] };
       return loadVersionRefsRaw(db, previousMeta).then((previousRefs) => ({ db, previousRefs }));
     })
+    .then(async (payload) => {
+      const preparedBlobs = await prepareBlobMapForStorage(nextBlobs || {});
+      const persistedMeta = withStoredByteSize(nextMeta, nextRefs, preparedBlobs);
+      return Object.assign({}, payload, { preparedBlobs, persistedMeta });
+    })
     .then((payload) => {
-      const { db, previousRefs } = payload;
+      const { db, previousRefs, preparedBlobs, persistedMeta } = payload;
       const deltaByBlob = {};
 
       previousRefs.forEach((ref) => {
@@ -239,7 +303,7 @@ export function persistVersionState(nextMeta, nextRefs, nextBlobs, previousMeta)
         const mapStore = tx.objectStore(MAP_STORE);
         const blobStore = tx.objectStore(BLOB_STORE);
 
-        versionStore.put(nextMeta);
+        versionStore.put(persistedMeta);
 
         if (previousMeta) {
           (previousMeta.mapUrls || []).forEach((mapUrl) => {
@@ -261,11 +325,11 @@ export function persistVersionState(nextMeta, nextRefs, nextBlobs, previousMeta)
             return;
           }
 
-          putBlobRecordWithRefCount(blobStore, blobId, nextCount, nextBlobs[blobId] || null);
+          putBlobRecordWithRefCount(blobStore, blobId, nextCount, preparedBlobs[blobId] || null);
         });
 
         tx.oncomplete = () => {
-          state.versionIndex[nextMeta.id] = nextMeta;
+          state.versionIndex[persistedMeta.id] = persistedMeta;
 
           Object.keys(deltaByBlob).forEach((blobId) => {
             const current = state.blobIndex[blobId];
@@ -277,7 +341,7 @@ export function persistVersionState(nextMeta, nextRefs, nextBlobs, previousMeta)
               return;
             }
 
-            const template = current || nextBlobs[blobId];
+            const template = current || preparedBlobs[blobId];
             if (!template) return;
 
             state.blobIndex[blobId] = {
@@ -285,13 +349,16 @@ export function persistVersionState(nextMeta, nextRefs, nextBlobs, previousMeta)
               siteKey: template.siteKey,
               mapHash: template.mapHash,
               byteSize: template.byteSize || 0,
+              storedByteSize: template.storedByteSize ?? template.byteSize ?? 0,
+              contentByteSize: template.contentByteSize ?? template.byteSize ?? 0,
+              compression: template.compression || "identity",
               createdAt: template.createdAt || new Date().toISOString(),
               refCount: nextCount,
             };
           });
 
           nextRefs.forEach((ref) => {
-            if (ref?.blobId) state.blobSiteIndex[ref.blobId] = nextMeta.siteKey || pageSiteKey(nextMeta.pageUrl);
+            if (ref?.blobId) state.blobSiteIndex[ref.blobId] = persistedMeta.siteKey || pageSiteKey(persistedMeta.pageUrl);
           });
 
           resolve();
@@ -401,11 +468,28 @@ export function deletePageHistory(pageUrl) {
   });
 }
 
-export function loadVersionFiles(versionId) {
+export function loadVersionFiles(versionId, options = {}) {
   const meta = state.versionIndex[versionId];
   if (!meta) return Promise.resolve([]);
+  const includeContent = options.includeContent !== false;
+  const mode = sizeDisplayMode();
 
   return ensureStorageReady().then((db) => loadVersionRefsRaw(db, meta).then((refs) => {
+    if (!includeContent) {
+      return refs.map((ref) => ({
+        url: ref.mapUrl,
+        byteSize: displayBytes(ref.byteSize, state.blobIndex[ref.blobId]?.storedByteSize, mode),
+        rawByteSize: Number(ref.byteSize) || 0,
+        storedByteSize: storedBlobBytes(state.blobIndex[ref.blobId]),
+        refCount: ref.blobId ? Math.max(1, Number(state.blobIndex[ref.blobId]?.refCount) || 0) : 1,
+        page: {
+          url: meta.pageUrl,
+          title: meta.title,
+          id: meta.tabId || null,
+        },
+        versionId,
+      }));
+    }
     return loadBlobContentsRaw(db, refs.map((ref) => ref.blobId)).then((blobContent) => {
       return refs.map((ref) => {
         let content = blobContent[ref.blobId];
@@ -414,6 +498,9 @@ export function loadVersionFiles(versionId) {
         return {
           url: ref.mapUrl,
           content,
+          byteSize: displayBytes(ref.byteSize, state.blobIndex[ref.blobId]?.storedByteSize, mode),
+          rawByteSize: Number(ref.byteSize) || content.length,
+          storedByteSize: storedBlobBytes(state.blobIndex[ref.blobId]),
           refCount: ref.blobId ? Math.max(1, Number(state.blobIndex[ref.blobId]?.refCount) || 0) : 1,
           page: {
             url: meta.pageUrl,
@@ -459,6 +546,7 @@ export function saveSettings(nextSettings) {
 }
 
 export function summarizePages() {
+  const mode = sizeDisplayMode();
   const pageUrls = Object.keys(state.versionsByPage).sort((a, b) => {
     const av = state.versionIndex[state.versionsByPage[a][0]];
     const bv = state.versionIndex[state.versionsByPage[b][0]];
@@ -478,7 +566,9 @@ export function summarizePages() {
         createdAt: meta.createdAt,
         lastSeenAt: meta.lastSeenAt,
         mapCount: meta.mapCount,
-        byteSize: meta.byteSize,
+        byteSize: metaDisplayByteSize(meta, mode),
+        rawByteSize: Number(meta.byteSize) || 0,
+        storedByteSize: Number(meta.storedByteSize ?? meta.byteSize) || 0,
         signature: meta.signature,
       })),
     };
@@ -486,6 +576,7 @@ export function summarizePages() {
 }
 
 export function distributionSummary() {
+  const mode = sizeDisplayMode();
   const bySite = {};
   Object.keys(state.versionIndex).forEach((id) => {
     const meta = state.versionIndex[id];
@@ -498,29 +589,19 @@ export function distributionSummary() {
       };
     }
     bySite[meta.siteKey].versionCount++;
-  });
-
-  Object.keys(state.blobIndex).forEach((blobId) => {
-    const blob = state.blobIndex[blobId];
-    const ownerSiteKey = state.blobSiteIndex[blobId] || (bySite[blob.siteKey] ? blob.siteKey : null);
-    if (!ownerSiteKey) return;
-    if (!bySite[ownerSiteKey]) {
-      bySite[ownerSiteKey] = {
-        siteKey: ownerSiteKey,
-        versionCount: 0,
-        mapCount: 0,
-        byteSize: 0,
-      };
-    }
-    bySite[ownerSiteKey].mapCount++;
-    bySite[ownerSiteKey].byteSize += blob.byteSize || 0;
+    bySite[meta.siteKey].mapCount += Number(meta.mapCount) || 0;
+    bySite[meta.siteKey].byteSize += metaDisplayByteSize(meta, mode);
   });
 
   return Object.keys(bySite).sort().map((key) => bySite[key]);
 }
 
 export function totalStorageBytes() {
-  return Object.keys(state.blobIndex).reduce((sum, id) => sum + (state.blobIndex[id].byteSize || 0), 0);
+  return Object.keys(state.versionIndex).reduce((sum, id) => sum + metaDisplayByteSize(state.versionIndex[id]), 0);
+}
+
+function totalStoredBlobBytes() {
+  return Object.keys(state.blobIndex).reduce((sum, id) => sum + storedBlobBytes(state.blobIndex[id]), 0);
 }
 
 export function currentSettings() {
@@ -621,6 +702,7 @@ export async function importSourceMapsForPage(payload) {
     mapCount: refs.length,
     fileCount: refs.length,
     byteSize,
+    storedByteSize: byteSize,
     tabId: null,
   };
 
@@ -688,6 +770,7 @@ export function buildCompactedStorageState(db, metas) {
     const entries = results[0];
     const existingBlobs = results[1];
     const existingBlobMap = {};
+    const existingBlobContent = {};
     const invalidVersionMap = {};
     const recoveredRefsByVersion = {};
     const originalMetaById = {};
@@ -716,7 +799,10 @@ export function buildCompactedStorageState(db, metas) {
         const previousMapHash = value.mapHash || null;
         const blobId = value.blobId || (value.mapHash ? blobStoreKey(siteKey, value.mapHash) : null);
         if (blobId && existingBlobMap[blobId] && existingBlobMap[blobId].content != null) {
-          content = existingBlobMap[blobId].content;
+          if (!(blobId in existingBlobContent)) {
+            existingBlobContent[blobId] = await decodeBlobContent(existingBlobMap[blobId]);
+          }
+          content = existingBlobContent[blobId];
         }
         value._legacyMapHash = previousMapHash;
         value._legacyBlobId = blobId;
@@ -829,7 +915,16 @@ export function buildCompactedStorageState(db, metas) {
       desiredVersionMap[id] = finalizedMeta;
     });
 
-    const desiredMetas = Object.keys(desiredVersionMap).map((id) => desiredVersionMap[id]);
+    const desiredBlobArray = await Promise.all(Object.keys(desiredBlobs).map(async (blobId) => {
+      return prepareBlobRecordForStorage(desiredBlobs[blobId]);
+    }));
+    const desiredBlobLookup = {};
+    desiredBlobArray.forEach((blob) => {
+      desiredBlobLookup[blob.id] = blob;
+    });
+    const desiredMetas = Object.keys(desiredVersionMap).map((id) => {
+      return withStoredByteSize(desiredVersionMap[id], desiredRefsByVersion[id] || [], desiredBlobLookup);
+    });
     const upgradedVersions = desiredMetas.reduce((count, meta) => {
       return count + (hasVersionMetaChanged(originalMetaById[meta.id], meta) ? 1 : 0);
     }, 0);
@@ -837,7 +932,7 @@ export function buildCompactedStorageState(db, metas) {
     return {
       desiredMetas,
       desiredRefs,
-      desiredBlobs: Object.keys(desiredBlobs).map((blobId) => desiredBlobs[blobId]),
+      desiredBlobs: desiredBlobArray,
       invalidVersions: Object.keys(invalidVersionMap).map((id) => invalidVersionMap[id]),
       migration: {
         upgradedRefs,
@@ -849,10 +944,11 @@ export function buildCompactedStorageState(db, metas) {
 
 export function compactStorageData() {
   state.storageCompactionInProgress = true;
+  console.info("[SourceD] compactStorageData starting");
   return ensureStorageReady().then((db) => listAllVersionsRaw(db).then((metas) => {
     const beforeVersionCount = metas.length;
     const beforeMapCount = Object.keys(state.blobIndex).length;
-    const beforeBytes = totalStorageBytes();
+    const beforeBytes = totalStoredBlobBytes();
 
     return buildCompactedStorageState(db, metas).then((storageState) => {
       const desiredIdMap = {};
@@ -907,19 +1003,21 @@ export function compactStorageData() {
       });
       rebuildIndexes(versions, blobs, blobSiteIndex);
       refreshBadgeForActiveTab();
-      return {
+      const result = {
         invalidVersions: storageState.invalidVersions,
         stats: {
           removedVersions: Math.max(0, beforeVersionCount - versions.length),
           removedMaps: Math.max(0, beforeMapCount - blobs.length),
-          reclaimedBytes: Math.max(0, beforeBytes - totalStorageBytes()),
+          reclaimedBytes: Math.max(0, beforeBytes - totalStoredBlobBytes()),
           remainingVersions: versions.length,
           remainingMaps: blobs.length,
-          remainingBytes: totalStorageBytes(),
+          remainingBytes: totalStoredBlobBytes(),
           upgradedRefs: Number(storageState.migration?.upgradedRefs) || 0,
           upgradedVersions: Number(storageState.migration?.upgradedVersions) || 0,
         },
       };
+      console.info("[SourceD] compactStorageData finished:", result.stats, result.invalidVersions);
+      return result;
     }));
   })).finally(() => {
     state.storageCompactionInProgress = false;
@@ -989,8 +1087,9 @@ export async function runCleanupTasks() {
 
   for (const stepDef of stepDefs) {
     try {
+      console.info(`[SourceD] cleanup step starting: ${stepDef.label}`);
       const result = await stepDef.run();
-      steps.push({
+      const step = {
         id: stepDef.id,
         label: stepDef.label,
         ok: true,
@@ -1001,19 +1100,23 @@ export async function runCleanupTasks() {
         checkedTables: result.checkedTables || [],
         removedTables: result.removedTables || [],
         lingeringTables: result.lingeringTables || [],
-      });
+      };
+      console.info(`[SourceD] cleanup step finished: ${stepDef.label}`, step);
+      steps.push(step);
       cleaned = cleaned.concat(result.cleaned || []);
       stats = mergeCleanupStats(stats, result.stats);
     } catch (err) {
       failedCount++;
-      steps.push({
+      const step = {
         id: stepDef.id,
         label: stepDef.label,
         ok: false,
         changed: false,
         summary: `${stepDef.label} failed: ${cleanupErrorMessage(err)}`,
         error: cleanupErrorMessage(err),
-      });
+      };
+      console.error(`[SourceD] cleanup step failed: ${stepDef.label}`, err);
+      steps.push(step);
     }
   }
 

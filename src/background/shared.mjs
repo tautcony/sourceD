@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS = {
   maxVersionsPerPage: 10,
   autoCleanup: true,
   detectionEnabled: true,
+  sizeDisplayMode: "uncompressed",
   ignoredDomains: [],
   fetchDelayMs: 300,
   fetchTimeoutMs: 30_000,
@@ -178,6 +179,9 @@ export function toBlobMeta(record) {
     siteKey: record.siteKey,
     mapHash: record.mapHash,
     byteSize: record.byteSize || 0,
+    storedByteSize: record.storedByteSize ?? record.byteSize ?? 0,
+    contentByteSize: record.contentByteSize ?? record.byteSize ?? 0,
+    compression: record.compression || "identity",
     createdAt: record.createdAt,
     refCount: record.refCount || 0,
   };

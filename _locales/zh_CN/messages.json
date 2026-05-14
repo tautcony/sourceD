@@ -124,8 +124,8 @@
     "description": "弹窗版本统计"
   },
   "popupStorageUsed": {
-    "message": "已用 $1",
-    "description": "弹窗存储统计"
+    "message": "Source Map $1",
+    "description": "弹窗 source map 大小统计"
   },
   "popupOpenHistory": {
     "message": "历史面板",
@@ -192,7 +192,7 @@
     "description": "历史面板指标"
   },
   "dashboardTotalStorage": {
-    "message": "空间占用",
+    "message": "Source Map 大小",
     "description": "历史面板指标"
   },
   "dashboardHistoryTitle": {
@@ -208,8 +208,20 @@
     "description": "分布章节标题"
   },
   "dashboardDistributionCopy": {
-    "message": "按站点汇总存储占用，便于查看哪些来源增长最快。",
+    "message": "按站点汇总 Source Map 大小，便于查看哪些来源增长最快。",
     "description": "分布说明"
+  },
+  "dashboardSettingSizeDisplayMode": {
+    "message": "Map 大小显示",
+    "description": "设置标签"
+  },
+  "dashboardSettingSizeDisplayUncompressed": {
+    "message": "显示压缩前 sourcemap 大小",
+    "description": "设置选项"
+  },
+  "dashboardSettingSizeDisplayCompressed": {
+    "message": "显示压缩后 sourcemap 大小",
+    "description": "设置选项"
   },
   "dashboardSettingsTitle": {
     "message": "设置项",

@@ -163,7 +163,11 @@ export function createRuntimeMessageHandler(deps) {
             createdAt: latest.createdAt,
             lastSeenAt: latest.lastSeenAt,
             mapCount: latest.mapCount,
-            byteSize: latest.byteSize,
+            byteSize: currentSettings().sizeDisplayMode === "compressed"
+              ? Number(latest.storedByteSize ?? latest.byteSize) || 0
+              : Number(latest.byteSize ?? latest.storedByteSize) || 0,
+            rawByteSize: latest.byteSize,
+            storedByteSize: latest.storedByteSize ?? latest.byteSize,
             title: latest.title,
           },
           files,
@@ -192,9 +196,10 @@ export function createRuntimeMessageHandler(deps) {
     }
 
     if (message.action === "getVersionFiles") {
-      loadVersionFiles(message.versionId).then((files) => {
+      loadVersionFiles(message.versionId, { includeContent: message.includeContent !== false }).then((files) => {
         sendResponse({ ok: true, files });
       }).catch((err) => {
+        console.error("[SourceD] getVersionFiles failed:", message.versionId, err);
         sendResponse({ ok: false, error: errorMessage(err) });
       });
       return true;
@@ -254,6 +259,7 @@ export function createRuntimeMessageHandler(deps) {
     }
 
     if (message.action === "cleanupData") {
+      console.info("[SourceD] cleanup started");
       const runCleanup = runCleanupTasks || (() => {
         if (Object.keys(state.versionIndex).length === 0) {
           return Promise.resolve({
@@ -290,6 +296,7 @@ export function createRuntimeMessageHandler(deps) {
       });
 
       runCleanup().then((cleanupResult) => {
+        console.info("[SourceD] cleanup finished:", cleanupResult);
         broadcastSummary();
         sendResponse(cleanupResult);
       }).catch((err) => {

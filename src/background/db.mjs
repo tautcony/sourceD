@@ -13,6 +13,7 @@ import {
   refreshBadgeForActiveTab,
   state,
 } from "./shared.mjs";
+import { decodeBlobContent } from "./compression.mjs";
 
 export function getDb() {
   if (state.dbPromise) return state.dbPromise;
@@ -182,12 +183,16 @@ export function loadBlobContentsRaw(db, blobIds) {
     let pending = ids.length;
     ids.forEach((blobId) => {
       const req = store.get(blobId);
-      req.onsuccess = () => {
-        if (req.result && req.result.content != null) {
-          contentById[blobId] = req.result.content;
+      req.onsuccess = async () => {
+        try {
+          if (req.result && req.result.content != null) {
+            contentById[blobId] = await decodeBlobContent(req.result);
+          }
+          pending--;
+          if (pending === 0) resolve(contentById);
+        } catch (error) {
+          reject(error);
         }
-        pending--;
-        if (pending === 0) resolve(contentById);
       };
       req.onerror = () => reject(req.error);
     });

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Button, Space, Typography, Tree, Empty, Spin, Flex, ConfigProvider,
-  Card, Collapse, Statistic, Form, InputNumber, Switch, Tag, Tabs, App, Drawer, Input, Modal,
+  Card, Collapse, Statistic, Form, InputNumber, Switch, Tag, Tabs, App, Drawer, Input, Modal, Select,
 } from "antd";
 import {
   ReloadOutlined, DownloadOutlined, DeleteOutlined,
@@ -30,17 +30,29 @@ hljs.registerLanguage("css", css);
 hljs.registerLanguage("xml", xml);
 hljs.registerLanguage("json", json);
 
+const versionFilesCache = new Map();
+const MAX_HIGHLIGHT_CHARS = 200000;
+const EXPAND_ALL_MAP_FILES_LIMIT = 50;
+const EXPAND_ALL_SOURCE_FILES_LIMIT = 200;
+
 const { Title, Text } = Typography;
 const defaultDashboardSettings = {
   retentionDays: 30,
   maxVersionsPerPage: 10,
   autoCleanup: true,
   detectionEnabled: true,
+  sizeDisplayMode: "uncompressed",
   ignoredDomains: [],
   fetchDelayMs: 300,
   fetchTimeoutMs: 30_000,
   maxMapBytes: 50 * 1024 * 1024,
 };
+
+function runtimeMessageError() {
+  const err = chrome.runtime?.lastError;
+  if (!err) return null;
+  return err instanceof Error ? err : new Error(err.message || String(err));
+}
 
 function cleanupStepStatus(step) {
   if (step?.ok === false) return "Failed";
@@ -96,19 +108,20 @@ function CodePreview({ code, filename }) {
   useEffect(() => {
     /* c8 ignore next */
     if (!codeRef.current || !code) return;
+    const currentCode = codeRef.current;
+    currentCode.textContent = code;
     /* c8 ignore next 2 */
-    const lang = guessLanguage(filename
-      || "");
-    if (lang) {
+    const lang = guessLanguage(filename || "");
+    if (!lang || code.length > MAX_HIGHLIGHT_CHARS) return;
+    const timer = setTimeout(() => {
       try {
         const result = hljs.highlight(code, { language: lang });
-        codeRef.current.innerHTML = result.value;
+        currentCode.innerHTML = result.value;
       } catch {
-        codeRef.current.textContent = code;
+        currentCode.textContent = code;
       }
-    } else {
-      codeRef.current.textContent = code;
-    }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [code, filename]);
 
   return (
@@ -142,7 +155,7 @@ function buildMapTree(files) {
     node.files.push({
       name: parts[parts.length - 1],
       url: file.url,
-      size: file.content.length,
+      size: Number(file.byteSize) || file.content.length,
       refCount: Number(file.refCount) || 1,
     });
   });
@@ -228,6 +241,13 @@ function toSourceTreeData(node, pathPrefix = "") {
     });
   }
   return children;
+}
+
+function limitedExpandedKeys(treeData, expandAll) {
+  if (expandAll) return undefined;
+  return treeData
+    .filter((item) => Array.isArray(item.children) && item.children.length > 0)
+    .map((item) => item.key);
 }
 
 function groupPagesByDomain(pages) {
@@ -388,38 +408,139 @@ function DistributionChart({ items }) {
 
 function VersionPanel({ version }) {
   const [files, setFiles] = useState(null);
+  const [fullFiles, setFullFiles] = useState(null);
   const [loadingFiles, setLoadingFiles] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [sourceFiles, setSourceFiles] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
+  const previewCacheRef = useRef(null);
 
   useEffect(() => {
-    chrome.runtime.sendMessage({ action: "getVersionFiles", versionId: version.id }, (resp) => {
+    if (versionFilesCache.has(version.id)) {
       setLoadingFiles(false);
-      setFiles(resp?.ok ? (resp.files || []) : []);
+      setFiles(versionFilesCache.get(version.id));
+      return;
+    }
+    chrome.runtime.sendMessage({ action: "getVersionFiles", versionId: version.id, includeContent: false }, (resp) => {
+      const err = runtimeMessageError();
+      if (err) {
+        console.error("[SourceD] dashboard getVersionFiles failed:", version.id, err);
+        setLoadingFiles(false);
+        setFiles([]);
+        return;
+      }
+      if (!resp?.ok) {
+        console.error("[SourceD] dashboard getVersionFiles returned error:", version.id, resp?.error || "unknown error");
+        setLoadingFiles(false);
+        setFiles([]);
+        return;
+      }
+      const nextFiles = resp.files || [];
+      versionFilesCache.set(version.id, nextFiles);
+      setLoadingFiles(false);
+      setFiles(nextFiles);
     });
   }, [version.id]);
+
+  useEffect(() => {
+    previewCacheRef.current = null;
+    setFullFiles(null);
+  }, [files]);
+
+  const ensureFullFiles = useCallback(() => {
+    if (fullFiles?.length) return Promise.resolve(fullFiles);
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ action: "getVersionFiles", versionId: version.id, includeContent: true }, (resp) => {
+        const err = runtimeMessageError();
+        if (err) {
+          console.error("[SourceD] dashboard full getVersionFiles failed:", version.id, err);
+          reject(err);
+          return;
+        }
+        if (!resp?.ok) {
+          const nextError = new Error(resp?.error || "Failed to load version files");
+          console.error("[SourceD] dashboard full getVersionFiles returned error:", version.id, nextError.message);
+          reject(nextError);
+          return;
+        }
+        const nextFiles = resp.files || [];
+        setFullFiles(nextFiles);
+        resolve(nextFiles);
+      });
+    });
+  }, [fullFiles, version.id]);
+
+  useEffect(() => {
+    if (!previewOpen) return undefined;
+    if (fullFiles == null) return undefined;
+    if (!fullFiles.length) {
+      setSourceFiles([]);
+      setSelectedFile(null);
+      setPreviewLoading(false);
+      return undefined;
+    }
+    if (previewCacheRef.current) {
+      setSourceFiles(previewCacheRef.current);
+      setSelectedFile((current) => current || null);
+      setPreviewLoading(false);
+      return undefined;
+    }
+    setPreviewLoading(true);
+    setSourceFiles(null);
+    setSelectedFile(null);
+    const timer = setTimeout(() => {
+      const extracted = extractSourceFiles(fullFiles);
+      previewCacheRef.current = extracted;
+      setSourceFiles(extracted);
+      setSelectedFile(null);
+      setPreviewLoading(false);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [previewOpen, fullFiles]);
 
   const handleDownload = useCallback(() => {
     /* c8 ignore next */
     if (!files?.length) return;
-    downloadGroup(files, null, versionZipBaseName(files, version))
+    ensureFullFiles()
+      .then((nextFiles) => downloadGroup(nextFiles, null, versionZipBaseName(nextFiles, version)))
       .catch((err) => console.error("[SourceD] version download failed:", err));
-  }, [files, version]);
+  }, [ensureFullFiles, files, version]);
 
   const handlePreview = useCallback(() => {
     /* c8 ignore next */
     if (!files?.length) return;
-    const extracted = extractSourceFiles(files);
-    setSourceFiles(extracted);
-    setSelectedFile(null);
+    setPreviewLoading(true);
     setPreviewOpen(true);
-  }, [files]);
+    ensureFullFiles().catch((err) => {
+      console.error("[SourceD] version preview file load failed:", err);
+      setPreviewLoading(false);
+      setSourceFiles([]);
+      setSelectedFile(null);
+    });
+  }, [ensureFullFiles, files]);
 
   const sourceTreeData = useMemo(() => {
     if (!sourceFiles?.length) return [];
     return toSourceTreeData(buildSourceTree(sourceFiles));
   }, [sourceFiles]);
+
+  const treeData = useMemo(() => {
+    if (!files?.length) return [];
+    return toAntdTreeData(buildMapTree(files));
+  }, [files]);
+
+  const versionTreeExpandAll = (files?.length || 0) <= EXPAND_ALL_MAP_FILES_LIMIT;
+  const versionTreeExpandedKeys = useMemo(
+    () => limitedExpandedKeys(treeData, versionTreeExpandAll),
+    [treeData, versionTreeExpandAll],
+  );
+
+  const sourceTreeExpandAll = (sourceFiles?.length || 0) <= EXPAND_ALL_SOURCE_FILES_LIMIT;
+  const sourceTreeExpandedKeys = useMemo(
+    () => limitedExpandedKeys(sourceTreeData, sourceTreeExpandAll),
+    [sourceTreeData, sourceTreeExpandAll],
+  );
 
   const sourceFileMap = useMemo(() => {
     const map = {};
@@ -443,11 +564,6 @@ function VersionPanel({ version }) {
   useEffect(() => {
     return () => { setPreviewOpen(false); };
   }, []);
-
-  const treeData = useMemo(() => {
-    if (!files?.length) return [];
-    return toAntdTreeData(buildMapTree(files));
-  }, [files]);
 
   if (loadingFiles) {
     return <Spin size="small" style={{ padding: 16 }} />;
@@ -473,7 +589,14 @@ function VersionPanel({ version }) {
           </Button>
         </Space>
       </Flex>
-      <Tree showIcon blockNode defaultExpandAll treeData={treeData} style={{ fontSize: 12, width: "100%", minWidth: 0, overflow: "hidden" }} />
+      <Tree
+        showIcon
+        blockNode
+        defaultExpandAll={versionTreeExpandAll}
+        defaultExpandedKeys={versionTreeExpandedKeys}
+        treeData={treeData}
+        style={{ fontSize: 12, width: "100%", minWidth: 0, overflow: "hidden" }}
+      />
       <Drawer
         title={i18nMessage("dashboardPreviewTitle")}
         open={previewOpen}
@@ -482,13 +605,18 @@ function VersionPanel({ version }) {
         size="70vw"
         styles={{ body: { padding: 0, display: "flex", flexDirection: "column", overflow: "hidden" } }}
       >
-        {sourceFiles && sourceFiles.length > 0 ? (
+        {previewLoading ? (
+          <Flex justify="center" align="center" style={{ height: "100%" }}>
+            <Spin />
+          </Flex>
+        ) : sourceFiles && sourceFiles.length > 0 ? (
           <Flex style={{ height: "100%", overflow: "hidden" }}>
             <div style={{ width: 360, minWidth: 260, borderRight: "1px solid #f0f0f0", overflow: "auto", padding: "8px 0" }}>
               <Tree
                 showIcon
                 blockNode
-                defaultExpandAll
+                defaultExpandAll={sourceTreeExpandAll}
+                defaultExpandedKeys={sourceTreeExpandedKeys}
                 treeData={sourceTreeData}
                 onSelect={handleTreeSelect}
                 style={{ fontSize: 12, width: "100%", minWidth: 0, overflow: "hidden" }}
@@ -535,6 +663,7 @@ function SettingsSection({ settings, onReload }) {
         autoCleanup: !!settings.autoCleanup,
         detectionEnabled: settings.detectionEnabled !== false,
         ignoredDomains: (settings.ignoredDomains || []).join("\n"),
+        sizeDisplayMode: settings.sizeDisplayMode || "uncompressed",
         fetchDelayMs: settings.fetchDelayMs,
         fetchTimeoutMs: settings.fetchTimeoutMs,
         maxMapBytes: settings.maxMapBytes,
@@ -552,6 +681,7 @@ function SettingsSection({ settings, onReload }) {
         autoCleanup: !!values.autoCleanup,
         detectionEnabled: values.detectionEnabled !== false,
         ignoredDomains: normalizeDomainFilterList(values.ignoredDomains),
+        sizeDisplayMode: values.sizeDisplayMode === "compressed" ? "compressed" : "uncompressed",
         fetchDelayMs: Number(values.fetchDelayMs) || 300,
         fetchTimeoutMs: Number(values.fetchTimeoutMs) || 30_000,
         maxMapBytes: Number(values.maxMapBytes) || 50 * 1024 * 1024,
@@ -582,6 +712,14 @@ function SettingsSection({ settings, onReload }) {
         </Card>
 
         <Card size="small" title={i18nMessage("dashboardSettingsGroupCapture")}>
+          <Form.Item label={i18nMessage("dashboardSettingSizeDisplayMode")} name="sizeDisplayMode">
+            <Select
+              options={[
+                { value: "uncompressed", label: i18nMessage("dashboardSettingSizeDisplayUncompressed") },
+                { value: "compressed", label: i18nMessage("dashboardSettingSizeDisplayCompressed") },
+              ]}
+            />
+          </Form.Item>
           <Form.Item label={i18nMessage("dashboardSettingFetchDelayMs")} name="fetchDelayMs">
             <InputNumber min={0} max={5000} style={{ width: "100%" }} />
           </Form.Item>
@@ -764,6 +902,7 @@ function DashboardContent() {
   const hasLoadedDashboardRef = useRef(false);
 
   const applyDashboardData = useCallback((data) => {
+    versionFilesCache.clear();
     setPages(data?.pages || []);
     setDistribution(data?.distribution || []);
     setSettings(data?.settings || defaultDashboardSettings);
@@ -799,6 +938,16 @@ function DashboardContent() {
     setCleaning(true);
     chrome.runtime.sendMessage({ action: "cleanupData" }, (resp) => {
       setCleaning(false);
+      const err = runtimeMessageError();
+      if (err) {
+        console.error("[SourceD] cleanupData message failed:", err);
+        modal.error({
+          title: "Storage Cleanup Failed",
+          content: renderCleanupSummary({ ok: false, error: err.message, steps: [] }, "Cleanup failed"),
+          width: 720,
+        });
+        return;
+      }
       const steps = Array.isArray(resp?.steps) ? resp.steps : [];
 
       if (!resp?.ok) {

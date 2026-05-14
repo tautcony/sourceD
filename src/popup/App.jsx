@@ -16,6 +16,12 @@ import { parseSourceMap, downloadGroup } from "./sourcemap.mjs";
 const { Text, Link: AntLink } = Typography;
 const REPOSITORY_URL = "https://github.com/tautcony/sourceD";
 
+function runtimeMessageError() {
+  const err = chrome.runtime?.lastError;
+  if (!err) return null;
+  return err instanceof Error ? err : new Error(err.message || String(err));
+}
+
 function buildMapTree(files) {
   const root = { folders: {}, files: [] };
   files.forEach((file) => {
@@ -30,7 +36,7 @@ function buildMapTree(files) {
     node.files.push({
       name: parts[parts.length - 1],
       url: file.url,
-      size: file.content.length,
+      size: Number(file.byteSize) || file.content.length,
       refCount: Number(file.refCount) || 1,
     });
   });
@@ -88,9 +94,17 @@ export default function PopupApp() {
       const tab = tabs?.[0];
       const url = tab?.url || "";
       chrome.runtime.sendMessage({ action: "getPopupState", pageUrl: url }, (data) => {
+        const err = runtimeMessageError();
         setLoading(false);
         setPageUrl(url);
+        if (err) {
+          console.error("[SourceD] getPopupState failed:", err);
+          setLatestVersion(null);
+          setFiles([]);
+          return;
+        }
         if (!data?.ok) {
+          if (data?.error) console.error("[SourceD] getPopupState returned error:", data.error);
           setLatestVersion(null);
           setFiles([]);
           return;
@@ -167,6 +181,11 @@ export default function PopupApp() {
       action: "updateSettings",
       settings: { ignoredDomains: nextIgnoredDomains },
     }, (resp) => {
+      const err = runtimeMessageError();
+      if (err) {
+        console.error("[SourceD] updateSettings failed:", err);
+        return;
+      }
       if (resp?.ok) {
         setIgnoredDomains(normalizeDomainFilterList(resp.settings?.ignoredDomains));
       }

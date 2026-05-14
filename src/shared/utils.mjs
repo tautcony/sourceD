@@ -68,7 +68,7 @@ export function parseFileName(path) {
 
 export function fileSizeIEC(bytes) {
   if (!bytes || bytes === 0) return "0 Bytes";
-  var units = ["Bytes", "KB", "MB", "GB"];
+  var units = ["Bytes", "KiB", "MiB", "GiB"];
   var i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2) + " " + units[i];
 }
