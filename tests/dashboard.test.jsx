@@ -5,6 +5,14 @@ import DashboardApp from "../src/dashboard/App.jsx";
 import hljs from "highlight.js/lib/core";
 import * as popupSourceMapHelpers from "../src/popup/sourcemap.mjs";
 
+vi.mock("../src/popup/sourcemap.mjs", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    downloadGroup: vi.fn((...args) => actual.downloadGroup(...args)),
+  };
+});
+
 const messageApi = {
   success: vi.fn(),
   info: vi.fn(),
@@ -617,7 +625,7 @@ describe("DashboardApp", () => {
 
   it("handles version download failure gracefully", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
-    vi.spyOn(popupSourceMapHelpers, "downloadGroup").mockRejectedValueOnce(new Error("zip-fail"));
+    popupSourceMapHelpers.downloadGroup.mockRejectedValueOnce(new Error("zip-fail"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     render(<DashboardApp />);

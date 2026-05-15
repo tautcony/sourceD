@@ -3,6 +3,15 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import PopupApp from "../src/popup/App.jsx";
 import * as sourceMapHelpers from "../src/popup/sourcemap.mjs";
 
+vi.mock("../src/popup/sourcemap.mjs", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    downloadGroup: vi.fn((...args) => actual.downloadGroup(...args)),
+    parseSourceMap: vi.fn((...args) => actual.parseSourceMap(...args)),
+  };
+});
+
 // Mock FileReader for download tests
 class MockFileReader {
   readAsDataURL() {
@@ -293,7 +302,7 @@ describe("PopupApp", () => {
       latestVersion: { id: "v1", label: "v1", createdAt: "2026-01-01T00:00:00Z", mapCount: 1, byteSize: 500 },
       files: [{ url: "https://example.com/app.js.map", content: sourceMap }],
     });
-    vi.spyOn(sourceMapHelpers, "downloadGroup").mockRejectedValueOnce(new Error("boom"));
+    sourceMapHelpers.downloadGroup.mockRejectedValueOnce(new Error("boom"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     render(<PopupApp />);
@@ -337,7 +346,7 @@ describe("PopupApp", () => {
       latestVersion: { id: "v1", label: "v1", createdAt: "2026-01-01T00:00:00Z", mapCount: 1, byteSize: 500 },
       files: [{ url: "https://example.com/bundle.js.map", content: sourceMap }],
     });
-    vi.spyOn(sourceMapHelpers, "parseSourceMap").mockRejectedValueOnce(new Error("single-fail"));
+    sourceMapHelpers.parseSourceMap.mockRejectedValueOnce(new Error("single-fail"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     render(<PopupApp />);

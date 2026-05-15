@@ -7,3 +7,5 @@ dist/
 releases/
 bundles/
 coverage/
+.vitest-attachments/
+__screenshots__/
