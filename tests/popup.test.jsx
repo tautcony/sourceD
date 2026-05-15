@@ -462,4 +462,64 @@ describe("PopupApp", () => {
     render(<PopupApp />);
     await screen.findByText("No source files detected");
   });
+
+  it("shows empty state when getPopupState fails with runtime error", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    chrome.tabs.query = vi.fn((_, cb) => cb([{ id: 1, url: "https://example.com/app" }]));
+    chrome.runtime.sendMessage = vi.fn((msg, cb) => {
+      if (msg.action === "getPopupState") {
+        chrome.runtime.lastError = { message: "extension context invalidated" };
+        cb(null);
+        chrome.runtime.lastError = null;
+      } else {
+        if (cb) cb(null);
+      }
+    });
+    render(<PopupApp />);
+    await screen.findByText("No source files detected");
+    expect(consoleError).toHaveBeenCalledWith(
+      "[SourceD] getPopupState failed:",
+      expect.any(Error),
+    );
+  });
+
+  it("handles updateSettings failure in domain filter update", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockPopupState({
+      pageUrl: "https://example.com/app",
+      settings: { detectionEnabled: true, ignoredDomains: [] },
+    });
+    // Override sendMessage: updateSettings triggers a runtime error
+    chrome.runtime.sendMessage = vi.fn((msg, cb) => {
+      if (msg.action === "getPopupState") {
+        cb({
+          ok: true,
+          pageUrl: "https://example.com/app",
+          latestVersion: null,
+          files: [],
+          totalStorageBytes: 0,
+          totalVersions: 0,
+          settings: { detectionEnabled: true, ignoredDomains: [] },
+        });
+      } else if (msg.action === "updateSettings") {
+        chrome.runtime.lastError = { message: "update failed" };
+        cb(null);
+        chrome.runtime.lastError = null;
+      } else {
+        if (cb) cb(null);
+      }
+    });
+
+    render(<PopupApp />);
+    await screen.findByText("Current domain: example.com");
+
+    fireEvent.click(screen.getByText("Ignore domain").closest("button"));
+
+    await waitFor(() => {
+      expect(consoleError).toHaveBeenCalledWith(
+        "[SourceD] updateSettings failed:",
+        expect.any(Error),
+      );
+    });
+  });
 });

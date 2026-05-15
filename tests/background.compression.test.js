@@ -158,4 +158,11 @@ describe("background compression helpers", () => {
       content: encoder.encode("x"),
     })).rejects.toThrow("Unsupported compression type: brotli");
   });
+
+  it("returns null for null/missing record or null content", async () => {
+    await expect(decodeBlobContent(null)).resolves.toBeNull();
+    await expect(decodeBlobContent(undefined)).resolves.toBeNull();
+    await expect(decodeBlobContent({ content: null })).resolves.toBeNull();
+    await expect(decodeBlobContent({ content: undefined })).resolves.toBeNull();
+  });
 });

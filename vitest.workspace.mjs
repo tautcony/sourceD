@@ -1,5 +1,4 @@
 import { defineWorkspace } from "vitest/config";
-import { playwright } from "@vitest/browser-playwright";
 
 export default defineWorkspace([
   {

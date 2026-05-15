@@ -533,6 +533,110 @@ describe("background runtime handlers", () => {
       rejectedFiles: ["unnamed.map"],
     });
   });
+
+  it("cleanupData inline fallback: empty versionIndex fast-path and non-empty with null cleanupLegacyDataTables", async () => {
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    // Deps with runCleanupTasks: null to activate the inline fallback
+    const state = { versionIndex: {} };
+    const compactStorageData = vi.fn(() => Promise.resolve({
+      invalidVersions: [],
+      stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0, upgradedRefs: 0, upgradedVersions: 0 },
+    }));
+    const deps = {
+      state,
+      canonicalPageUrl: (url) => url,
+      latestVersionForPage: vi.fn(() => null),
+      versionLabel: vi.fn(() => ""),
+      totalStorageBytes: vi.fn(() => 0),
+      currentSettings: vi.fn(() => ({ detectionEnabled: true })),
+      loadVersionFiles: vi.fn(),
+      summarizePages: vi.fn(() => []),
+      distributionSummary: vi.fn(() => []),
+      saveSettings: vi.fn(),
+      prunePageHistory: vi.fn(),
+      broadcastSummary: vi.fn(),
+      deleteVersions: vi.fn(),
+      removeVersionsFromIndexes: vi.fn(),
+      refreshBadgeForActiveTab: vi.fn(),
+      deletePageHistoryAndSessions: vi.fn(),
+      deleteSiteHistoryAndSessions: vi.fn(),
+      compactStorageData,
+      cleanupLegacyDataTables: null,
+      importSourceMapsForPage: vi.fn(),
+      isValidSourceMap: vi.fn(() => false),
+      runCleanupTasks: null,
+    };
+    const handler = createRuntimeMessageHandler(deps);
+    const sendResponse = vi.fn();
+
+    // Empty versionIndex → fast path (no compaction)
+    handler({ action: "cleanupData" }, {}, sendResponse);
+    await flushPromises();
+    await flushPromises();
+    expect(compactStorageData).not.toHaveBeenCalled();
+    expect(sendResponse).toHaveBeenLastCalledWith({
+      ok: true,
+      cleaned: [],
+      stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 },
+      steps: [],
+    });
+
+    // Non-empty versionIndex + cleanupLegacyDataTables: null → calls compactStorageData, no table step
+    state.versionIndex = { v1: { id: "v1" } };
+    sendResponse.mockClear();
+    handler({ action: "cleanupData" }, {}, sendResponse);
+    await flushPromises();
+    await flushPromises();
+    await flushPromises();
+    await flushPromises();
+    expect(compactStorageData).toHaveBeenCalled();
+    expect(sendResponse).toHaveBeenLastCalledWith(expect.objectContaining({
+      ok: true,
+      steps: [expect.objectContaining({ id: "compact-storage", ok: true })],
+    }));
+    expect(consoleInfo).toHaveBeenCalledWith("[SourceD] cleanup started");
+  });
+
+  it("getPopupState byteSize uses compressed storedByteSize when sizeDisplayMode is compressed", async () => {
+    const state = {
+      versionIndex: { v1: { id: "v1", lastSeenAt: "l", createdAt: "c", mapCount: 1, byteSize: 200, storedByteSize: 80, title: "T" } },
+      versionsByPage: { "https://example.com/app": ["v1"] },
+    };
+    const deps = {
+      state,
+      canonicalPageUrl: (url) => url,
+      latestVersionForPage: vi.fn(() => state.versionIndex.v1),
+      versionLabel: vi.fn(() => "label"),
+      totalStorageBytes: vi.fn(() => 0),
+      currentSettings: vi.fn(() => ({ detectionEnabled: true, sizeDisplayMode: "compressed" })),
+      loadVersionFiles: vi.fn(() => Promise.resolve([])),
+      summarizePages: vi.fn(() => []),
+      distributionSummary: vi.fn(() => []),
+      saveSettings: vi.fn(),
+      prunePageHistory: vi.fn(),
+      broadcastSummary: vi.fn(),
+      deleteVersions: vi.fn(),
+      removeVersionsFromIndexes: vi.fn(),
+      refreshBadgeForActiveTab: vi.fn(),
+      deletePageHistoryAndSessions: vi.fn(),
+      deleteSiteHistoryAndSessions: vi.fn(),
+      compactStorageData: vi.fn(),
+      cleanupLegacyDataTables: vi.fn(),
+      importSourceMapsForPage: vi.fn(),
+      isValidSourceMap: vi.fn(),
+      runCleanupTasks: vi.fn(),
+    };
+    const handler = createRuntimeMessageHandler(deps);
+    const sendResponse = vi.fn();
+    handler({ action: "getPopupState", pageUrl: "https://example.com/app" }, {}, sendResponse);
+    await flushPromises();
+    await flushPromises();
+    expect(sendResponse).toHaveBeenLastCalledWith(expect.objectContaining({
+      ok: true,
+      latestVersion: expect.objectContaining({ byteSize: 80 }),
+    }));
+  });
 });
 
 describe("background runtime wiring and entry", () => {

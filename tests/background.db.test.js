@@ -148,4 +148,98 @@ describe("background db adapters", () => {
     await expect(dbModule.loadVersionRefsRaw(errorDb, { id: "v1", pageUrl: "https://example.com", mapUrls: ["a.map"] })).rejects.toThrow("req fail");
     await expect(dbModule.loadBlobContentsRaw(errorDb, ["blob"])).rejects.toThrow("req fail");
   });
+
+  it("loadVersionRefsRaw reads stored object refs and skips null values", async () => {
+    const objectRef = { mapUrl: "a.map", blobId: "site::hash", byteSize: 10, mapHash: "hash" };
+    const successDb = {
+      transaction: vi.fn(() => ({
+        objectStore: vi.fn(() => ({
+          get: vi.fn((key) => {
+            const req = { result: null, error: null, onsuccess: null, onerror: null };
+            queueMicrotask(() => {
+              // "v1::a.map" → stored object ref (not string); "v1::b.map" → null (missing)
+              req.result = key === "v1::a.map" ? objectRef : null;
+              req.onsuccess?.();
+            });
+            return req;
+          }),
+        })),
+      })),
+    };
+
+    // Stored as object ref (not string) → uses `else if (value != null)` path
+    const refs = await dbModule.loadVersionRefsRaw(successDb, {
+      id: "v1",
+      pageUrl: "https://example.com",
+      siteKey: "https://example.com",
+      mapUrls: ["a.map", "b.map"],
+    });
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toBe(objectRef);
+
+    // Empty mapUrls → fast-path empty resolve
+    const empty = await dbModule.loadVersionRefsRaw(successDb, { id: "v1", mapUrls: [] });
+    expect(empty).toEqual([]);
+  });
+
+  it("loadBlobContentsRaw deduplicates blobIds and skips blobs without content", async () => {
+    const successDb = {
+      transaction: vi.fn(() => ({
+        objectStore: vi.fn(() => ({
+          get: vi.fn((blobId) => {
+            const req = { result: null, error: null, onsuccess: null, onerror: null };
+            queueMicrotask(() => {
+              // "blob-a" has no content, "blob-b" has content
+              if (blobId === "blob-a") req.result = { id: "blob-a", compression: "identity", content: null };
+              else if (blobId === "blob-b") req.result = { id: "blob-b", compression: "identity", content: "hello" };
+              req.onsuccess?.();
+            });
+            return req;
+          }),
+        })),
+      })),
+    };
+
+    // Duplicate blobIds → deduplication, only 1 store.get call per unique id
+    const result = await dbModule.loadBlobContentsRaw(successDb, ["blob-b", "blob-b", "blob-a"]);
+    // blob-a has null content → skipped; blob-b has content
+    expect(result["blob-b"]).toBe("hello");
+    expect("blob-a" in result).toBe(false);
+
+    // All duplicates → ids array is empty → fast path resolve
+    const result2 = await dbModule.loadBlobContentsRaw(successDb, ["blob-b", "blob-b"]);
+    expect(result2["blob-b"]).toBe("hello");
+  });
+
+  it("getDb onupgradeneeded records fromVersion from req.transaction.db.version", async () => {
+    const fakeDb = {
+      objectStoreNames: { contains: () => true },
+      createObjectStore: vi.fn(),
+      deleteObjectStore: vi.fn(),
+      version: 4,
+    };
+    const openReq = {
+      result: fakeDb,
+      error: null,
+      onsuccess: null,
+      onerror: null,
+      onupgradeneeded: null,
+      onblocked: null,
+      transaction: { db: { version: 3 } },
+    };
+    globalThis.indexedDB = {
+      open: vi.fn(() => {
+        queueMicrotask(() => {
+          openReq.onupgradeneeded?.();
+          openReq.onsuccess?.();
+        });
+        return openReq;
+      }),
+    };
+
+    state.dbPromise = null;
+    await dbModule.getDb();
+    // state.lastDbMaintenance.fromVersion should use the transaction.db.version (3)
+    expect(state.lastDbMaintenance?.fromVersion).toBe(3);
+  });
 });

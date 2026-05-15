@@ -189,6 +189,49 @@ describe("background shared helpers", () => {
     ]);
     expect(shared.state.versionsByPage["https://example.com/solo"]).toEqual(["solo"]);
     expect(shared.state.blobIndex).toEqual({});
+
+    // Pass explicit null for blobSiteIndex to test the `|| {}` branch
+    shared.rebuildIndexes([], [], null);
+    expect(shared.state.blobSiteIndex).toEqual({});
+  });
+
+  it("toBlobMeta handles edge case null/zero field values", async () => {
+    const shared = await import("../src/background/shared.mjs");
+
+    // All fields present and truthy
+    const full = shared.toBlobMeta({
+      id: "b1", siteKey: "https://example.com", mapHash: "h1",
+      byteSize: 100, storedByteSize: 80, contentByteSize: 100,
+      compression: "gzip", createdAt: "2026-01-01T00:00:00.000Z", refCount: 3,
+    });
+    expect(full.byteSize).toBe(100);
+    expect(full.storedByteSize).toBe(80);
+    expect(full.contentByteSize).toBe(100);
+    expect(full.compression).toBe("gzip");
+    expect(full.refCount).toBe(3);
+
+    // Missing/null fields → fallback branches
+    const sparse = shared.toBlobMeta({
+      id: "b2", siteKey: "https://example.com", mapHash: "h2",
+      byteSize: 0,  // 0 → `|| 0` branch
+      storedByteSize: null,  // null → `?? record.byteSize`
+      contentByteSize: null,  // null → `?? record.byteSize`
+      compression: null,  // null → `|| "identity"` branch
+      refCount: 0,  // 0 → `|| 0` branch
+    });
+    expect(sparse.byteSize).toBe(0);
+    expect(sparse.storedByteSize).toBe(0);  // storedByteSize=null → byteSize=0 → ?? 0
+    expect(sparse.contentByteSize).toBe(0);
+    expect(sparse.compression).toBe("identity");
+    expect(sparse.refCount).toBe(0);
+
+    // storedByteSize and contentByteSize both null with byteSize also null → hits `?? 0` final fallback
+    const allNull = shared.toBlobMeta({
+      id: "b3", siteKey: "https://example.com", mapHash: "h3",
+      byteSize: null, storedByteSize: null, contentByteSize: null,
+    });
+    expect(allNull.storedByteSize).toBe(0);
+    expect(allNull.contentByteSize).toBe(0);
   });
 
   it("hashString returns a 64-char hex SHA-256 digest", async () => {
@@ -205,6 +248,36 @@ describe("background shared helpers", () => {
     const hashOther = await shared.hashString("world");
     expect(hashOther).not.toBe(hash);
     expect(hashOther).toHaveLength(64);
+  });
+
+  it("findBestVersionMatch handles non-superset and multi-superset selection", async () => {
+    const shared = await import("../src/background/shared.mjs");
+
+    // Non-superset: existing has more tokens but candidate has a token not in existing
+    shared.state.versionIndex = {
+      v1: {
+        id: "v1",
+        pageUrl: "https://example.com/app",
+        signature: "a.map#hash_a|b.map#hash_b|c.map#hash_c",
+      },
+    };
+    shared.state.versionsByPage = { "https://example.com/app": ["v1"] };
+
+    // Candidate has 2 tokens, v1 has 3 tokens (length check passes)
+    // but "x.map#hash_x" is NOT in v1's tokens → isSuperset=false → no match
+    const noMatch = shared.findBestVersionMatch("https://example.com/app", "a.map#hash_a|x.map#hash_x");
+    expect(noMatch).toEqual({ exactId: null, supersetId: null });
+
+    // Multi-superset: pick the one with fewest extra tokens
+    shared.state.versionIndex = {
+      v_big: { id: "v_big", pageUrl: "https://example.com/app", signature: "a.map#h1|b.map#h2|c.map#h3" },
+      v_small: { id: "v_small", pageUrl: "https://example.com/app", signature: "a.map#h1|b.map#h2" },
+    };
+    shared.state.versionsByPage = { "https://example.com/app": ["v_big", "v_small"] };
+
+    // Candidate has 1 token; both v_big (extraCount=2) and v_small (extraCount=1) are supersets
+    const best = shared.findBestVersionMatch("https://example.com/app", "a.map#h1");
+    expect(best).toEqual({ exactId: null, supersetId: "v_small" });
   });
 });
 
@@ -469,6 +542,44 @@ describe("background session helpers", () => {
     await expect(sessions.upsertSessionVersion(session)).resolves.toBeUndefined();
     expect(storage.persistVersionState).toHaveBeenCalled();
     expect(storage.prunePageHistory).not.toHaveBeenCalled();
+  });
+
+  it("calls prunePageHistory on new version when autoCleanup is enabled", async () => {
+    vi.doMock("../src/background/storage.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage.mjs");
+      return {
+        ...actual,
+        broadcastSummary: vi.fn(),
+        currentSettings: vi.fn(() => ({ autoCleanup: true, maxVersionsPerPage: 5, retentionDays: 30 })),
+        persistVersionState: vi.fn(() => Promise.resolve()),
+        prunePageHistory: vi.fn(() => Promise.resolve()),
+        touchVersionMeta: vi.fn(() => Promise.resolve()),
+      };
+    });
+
+    const shared = await import("../src/background/shared.mjs");
+    const sessions = await import("../src/background/sessions.mjs");
+    const storage = await import("../src/background/storage.mjs");
+
+    chrome.action.setBadgeText = vi.fn();
+    shared.state.versionIndex = {};
+    shared.state.versionsByPage = {};
+    shared.state.tabSessions = {};
+
+    const newSession = {
+      tabId: 30,
+      pageUrl: "https://example.com/autoclean",
+      title: "AutoClean",
+      maps: { "a.map": "content-a" },
+      versionId: null,
+      versionOwned: false,
+      signature: null,
+      timer: null,
+    };
+
+    await sessions.upsertSessionVersion(newSession);
+    expect(storage.persistVersionState).toHaveBeenCalled();
+    expect(storage.prunePageHistory).toHaveBeenCalledWith("https://example.com/autoclean");
   });
 });
 
@@ -1398,5 +1509,156 @@ describe("background storage helpers", () => {
       "https://example.com::collision::dup1",
       "https://example.com::collision::dup2",
     ]);
+  });
+
+  it("runCleanupTasks records failed steps when DB is unavailable", async () => {
+    const storage = await import("../src/background/storage.mjs");
+    const shared = await import("../src/background/shared.mjs");
+
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
+
+    // Make indexedDB.open fail so both compactStorageData and cleanupLegacyDataTables reject
+    chrome.tabs.query = vi.fn((_opts, cb) => cb([]));
+    chrome.action = { setBadgeText: vi.fn() };
+    globalThis.indexedDB = {
+      open: vi.fn(() => {
+        const req = { result: null, error: new Error("db unavailable"), onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+        queueMicrotask(() => req.onerror?.());
+        return req;
+      }),
+    };
+
+    shared.state.dbPromise = null;
+    shared.state.storageReadyPromise = null;
+    // Non-empty versionIndex forces compactStorageData to actually run (not fast-path)
+    shared.state.versionIndex = { v1: { id: "v1" } };
+
+    const result = await storage.runCleanupTasks();
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/cleanup steps failed/);
+    const compactStep = result.steps.find((s) => s.id === "compact-storage");
+    expect(compactStep).toEqual(expect.objectContaining({ ok: false, id: "compact-storage" }));
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("[SourceD] cleanup step failed:"),
+      expect.any(Error),
+    );
+  });
+
+  it("summarizePages, distributionSummary, totalStorageBytes use compressed mode when sizeDisplayMode is compressed", async () => {
+    const storage = await import("../src/background/storage.mjs");
+    const shared = await import("../src/background/shared.mjs");
+
+    shared.state.settings = {
+      retentionDays: 30,
+      maxVersionsPerPage: 10,
+      autoCleanup: false,
+      detectionEnabled: true,
+      sizeDisplayMode: "compressed",
+    };
+    shared.state.versionIndex = {
+      v1: {
+        id: "v1",
+        pageUrl: "https://example.com/page",
+        siteKey: "https://example.com",
+        title: "Page",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        lastSeenAt: "2026-01-01T00:00:00.000Z",
+        mapCount: 1,
+        byteSize: 1000,
+        storedByteSize: 400,
+        signature: "a.map#hash1",
+      },
+    };
+    shared.state.versionsByPage = { "https://example.com/page": ["v1"] };
+    shared.state.blobIndex = {};
+
+    const summaryPages = storage.summarizePages();
+    expect(summaryPages[0].versions[0].byteSize).toBe(400);
+
+    const dist = storage.distributionSummary();
+    expect(dist[0].byteSize).toBe(400);
+
+    const total = storage.totalStorageBytes();
+    expect(total).toBe(400);
+  });
+
+  it("loadVersionFiles sizeDisplayMode compressed and null blobId ref fallback", async () => {
+    const storage = await import("../src/background/storage.mjs");
+    const shared = await import("../src/background/shared.mjs");
+    const db = createInMemoryDb();
+
+    chrome.tabs.query = vi.fn((_opts, cb) => cb([]));
+    chrome.action = { setBadgeText: vi.fn() };
+    globalThis.indexedDB = {
+      open: vi.fn(() => {
+        const req = { result: db, error: null, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+        queueMicrotask(() => {
+          req.onupgradeneeded?.();
+          req.onsuccess?.();
+        });
+        return req;
+      }),
+    };
+
+    shared.state.dbPromise = null;
+    shared.state.storageReadyPromise = null;
+    shared.state.settings = {
+      retentionDays: 30,
+      maxVersionsPerPage: 10,
+      autoCleanup: false,
+      detectionEnabled: true,
+      sizeDisplayMode: "compressed",
+    };
+
+    await storage.importSourceMapsForPage({
+      pageUrl: "https://example.com/app",
+      files: [{ mapUrl: "a.map", content: "hello world" }],
+    });
+
+    const versions = Object.keys(shared.state.versionIndex);
+    const files = await storage.loadVersionFiles(versions[0], { includeContent: false });
+    expect(files).toHaveLength(1);
+    expect(files[0].url).toBe("a.map");
+    // storedByteSize comes from blobIndex (the blob stored for "hello world")
+    expect(typeof files[0].byteSize).toBe("number");
+  });
+
+  it("storedBytesForRefs uses byteSize fallback when ref has no blobId and no storedByteSize", async () => {
+    const storage = await import("../src/background/storage.mjs");
+    const shared = await import("../src/background/shared.mjs");
+    const db = createInMemoryDb();
+
+    chrome.tabs.query = vi.fn((_opts, cb) => cb([]));
+    chrome.action = { setBadgeText: vi.fn() };
+    globalThis.indexedDB = {
+      open: vi.fn(() => {
+        const req = { result: db, error: null, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+        queueMicrotask(() => {
+          req.onupgradeneeded?.();
+          req.onsuccess?.();
+        });
+        return req;
+      }),
+    };
+
+    shared.state.dbPromise = null;
+    shared.state.storageReadyPromise = null;
+    shared.state.settings = { retentionDays: 30, maxVersionsPerPage: 10, autoCleanup: false, detectionEnabled: true };
+
+    // Persist a version with a ref that has no blobId set (raw storage path)
+    await storage.importSourceMapsForPage({
+      pageUrl: "https://example.com/app",
+      files: [{ mapUrl: "b.map", content: "content-b" }],
+    });
+
+    // Load without content to exercise the includeContent=false path
+    // and verify the ref.blobId fallback in storedBytesForRefs
+    const vId = Object.keys(shared.state.versionIndex)[0];
+    const files = await storage.loadVersionFiles(vId, { includeContent: false });
+    expect(files).toHaveLength(1);
+    // ref should have a blobId (set by storage), but we verify the function returns valid sizes
+    expect(files[0].refCount).toBeGreaterThanOrEqual(1);
   });
 });

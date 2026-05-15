@@ -1339,4 +1339,83 @@ describe("DashboardApp", () => {
     expect(screen.getAllByText("a.js")).toHaveLength(1);
     expect(screen.getAllByText("b.js")).toHaveLength(1);
   });
+
+  it("handles version files initial load with runtime error", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 }, {
+      getVersionFiles: (_msg, cb) => {
+        chrome.runtime.lastError = { message: "getVersionFiles runtime error" };
+        cb(null);
+        chrome.runtime.lastError = null;
+      },
+    });
+    render(<DashboardApp />);
+    await openVersionPanel();
+
+    await waitFor(() => {
+      expect(screen.getByText("No files in this version.")).toBeInTheDocument();
+    });
+    expect(consoleError).toHaveBeenCalledWith(
+      "[SourceD] dashboard getVersionFiles failed:",
+      "v1",
+      expect.any(Error),
+    );
+  }, 15000);
+
+  it("handles full version files load failure (ensureFullFiles !resp.ok)", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 }, {
+      getVersionFiles: (msg, cb) => {
+        if (msg.includeContent) {
+          cb({ ok: false, error: "full files load failed" });
+        } else {
+          cb({ ok: true, files: mockVersionFiles });
+        }
+      },
+    });
+    render(<DashboardApp />);
+    await openVersionPanel();
+    await screen.findByText(/1 files/);
+
+    // Trigger full file load via preview
+    const previewBtn = await screen.findByText("Preview Sources");
+    fireEvent.click(previewBtn);
+
+    await waitFor(() => {
+      expect(consoleError).toHaveBeenCalledWith(
+        "[SourceD] dashboard full getVersionFiles returned error:",
+        "v1",
+        "full files load failed",
+      );
+    });
+  }, 15000);
+
+  it("uses versionFilesCache on second expand of same version panel", async () => {
+    mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
+    const { unmount } = render(<DashboardApp />);
+
+    // Expand once to populate cache
+    await openVersionPanel();
+    await screen.findByText(/1 files/);
+
+    // Count calls after first load
+    const callsAfterFirstLoad = chrome.runtime.sendMessage.mock.calls.filter(
+      ([msg]) => msg?.action === "getVersionFiles" && msg?.includeContent === false,
+    ).length;
+    expect(callsAfterFirstLoad).toBe(1);
+
+    // Unmount and re-render — cache should be used on second expand
+    unmount();
+    mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
+    render(<DashboardApp />);
+
+    await openVersionPanel();
+    await screen.findByText(/1 files/);
+
+    // No additional getVersionFiles calls (served from versionFilesCache)
+    const callsAfterSecondLoad = chrome.runtime.sendMessage.mock.calls.filter(
+      ([msg]) => msg?.action === "getVersionFiles" && msg?.includeContent === false,
+    ).length;
+    expect(callsAfterSecondLoad).toBe(1);
+  }, 15000);
 });
