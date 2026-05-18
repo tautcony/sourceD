@@ -84,7 +84,7 @@ export function createSourceMapFetcher(state, getSettings) {
             });
         })
         .catch((e) => {
-          console.warn("[SourceD] js fetch error:", e);
+          console.warn(`[SourceD] js fetch '${jsUrl}' error:`, e);
         })
         .finally(() => {
           clearTimeout(timeoutId);

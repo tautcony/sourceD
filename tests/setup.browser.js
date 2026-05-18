@@ -1,4 +1,10 @@
+import { beforeEach } from "vitest";
+import { setI18nLocale } from "../src/shared/utils.mjs";
 import "@testing-library/jest-dom/vitest";
+
+beforeEach(() => {
+  setI18nLocale(null);
+});
 
 // Mock window.matchMedia (required by antd)
 Object.defineProperty(window, "matchMedia", {
@@ -65,7 +71,7 @@ globalThis.chrome = {
         dashboardImportAction: "Import Maps",
         dashboardTotalPages: "Tracked Pages",
         dashboardTotalVersions: "Stored Versions",
-        dashboardTotalStorage: "Storage Used",
+        dashboardTotalStorage: "Source Map Size",
         dashboardHistoryTitle: "History",
         dashboardHistoryCopy: "Pages are grouped first...",
         dashboardDistributionTitle: "Data Distribution",
@@ -104,7 +110,7 @@ globalThis.chrome = {
         dashboardCleanupDone: `Abnormal data cleaned: ${substitutions?.[0] ?? ""} versions`,
         dashboardCleanupOptimized: `Storage optimized: ${substitutions?.[0] ?? ""} maps, ${substitutions?.[1] ?? ""} reclaimed`,
         dashboardCleanupNone: "No abnormal data found and no storage optimization was needed",
-        dashboardPreviewSources: "Preview Sources",
+        dashboardPreviewSources: "Preview sources",
         dashboardPreviewTitle: "Source Preview",
         dashboardPreviewEmpty: "Select a file to preview",
         dashboardImportTitle: "Import Source Maps",

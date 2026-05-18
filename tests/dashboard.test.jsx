@@ -146,7 +146,7 @@ describe("DashboardApp", () => {
     render(<DashboardApp />);
     expect(screen.getByText("Tracked Pages")).toBeInTheDocument();
     expect(screen.getByText("Stored Versions")).toBeInTheDocument();
-    expect(screen.getByText("Storage Used")).toBeInTheDocument();
+    expect(screen.getByText("Source Map Size")).toBeInTheDocument();
   });
 
   it("renders section titles", () => {
@@ -578,7 +578,7 @@ describe("DashboardApp", () => {
     // VersionPanel should load files and show file count
     await screen.findByText(/1 files/, {}, { timeout: 10000 });
     // Should show action buttons
-    expect(screen.getByText("Preview Sources")).toBeInTheDocument();
+    expect(screen.getByText("Preview sources")).toBeInTheDocument();
     expect(screen.getByText("Download version")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Delete" }).length).toBeGreaterThan(0);
   }, 15000);
@@ -751,8 +751,8 @@ describe("DashboardApp", () => {
     render(<DashboardApp />);
     await openVersionPanel();
 
-    await waitFor(() => screen.getByText("Preview Sources"));
-    const previewBtn = screen.getByText("Preview Sources").closest("button");
+    await waitFor(() => screen.getByText("Preview sources"));
+    const previewBtn = screen.getByText("Preview sources").closest("button");
     fireEvent.click(previewBtn);
 
     // Drawer should open with source preview title
@@ -771,8 +771,8 @@ describe("DashboardApp", () => {
     render(<DashboardApp />);
     await openVersionPanel();
 
-    await waitFor(() => screen.getByText("Preview Sources"));
-    fireEvent.click(screen.getByText("Preview Sources").closest("button"));
+    await waitFor(() => screen.getByText("Preview sources"));
+    fireEvent.click(screen.getByText("Preview sources").closest("button"));
     await waitFor(() => screen.getByText("Source Preview"));
 
     fireEvent.click(document.querySelector(".ant-drawer-close"));
@@ -788,8 +788,8 @@ describe("DashboardApp", () => {
     await openVersionPanel();
 
     // Open preview drawer
-    await waitFor(() => screen.getByText("Preview Sources"));
-    fireEvent.click(screen.getByText("Preview Sources").closest("button"));
+    await waitFor(() => screen.getByText("Preview sources"));
+    fireEvent.click(screen.getByText("Preview sources").closest("button"));
 
     // Wait for drawer and source tree
     await waitFor(() => screen.getByText("Source Preview"));
@@ -829,8 +829,8 @@ describe("DashboardApp", () => {
     render(<DashboardApp />);
     await openVersionPanel();
 
-    await waitFor(() => screen.getByText("Preview Sources"));
-    fireEvent.click(screen.getByText("Preview Sources").closest("button"));
+    await waitFor(() => screen.getByText("Preview sources"));
+    fireEvent.click(screen.getByText("Preview sources").closest("button"));
     await waitFor(() => screen.getByText("Source Preview"));
     await waitFor(() => screen.getByText((content) => content.includes("README")));
     fireEvent.click(screen.getByText((content) => content.includes("README")));
@@ -849,8 +849,8 @@ describe("DashboardApp", () => {
     render(<DashboardApp />);
     await openVersionPanel();
 
-    await waitFor(() => screen.getByText("Preview Sources"));
-    fireEvent.click(screen.getByText("Preview Sources").closest("button"));
+    await waitFor(() => screen.getByText("Preview sources"));
+    fireEvent.click(screen.getByText("Preview sources").closest("button"));
     await waitFor(() => screen.getByText("Source Preview"));
     await waitFor(() => screen.getByText((content) => content.includes("index.js")));
     fireEvent.click(screen.getByText((content) => content.includes("index.js")));
@@ -1001,8 +1001,8 @@ describe("DashboardApp", () => {
     await openVersionPanel();
 
     // Open preview and select the txt file
-    await waitFor(() => screen.getByText("Preview Sources"));
-    fireEvent.click(screen.getByText("Preview Sources").closest("button"));
+    await waitFor(() => screen.getByText("Preview sources"));
+    fireEvent.click(screen.getByText("Preview sources").closest("button"));
     await waitFor(() => screen.getByText("Source Preview"));
     await waitFor(() => screen.getByText((c) => c.includes("config.txt")));
 
@@ -1197,8 +1197,8 @@ describe("DashboardApp", () => {
     await openVersionPanel();
 
     // Open preview
-    await waitFor(() => screen.getByText("Preview Sources"));
-    fireEvent.click(screen.getByText("Preview Sources").closest("button"));
+    await waitFor(() => screen.getByText("Preview sources"));
+    fireEvent.click(screen.getByText("Preview sources").closest("button"));
     await waitFor(() => screen.getByText("Source Preview"));
 
     // Should show folder structure
@@ -1327,7 +1327,7 @@ describe("DashboardApp", () => {
     await waitFor(() => screen.getByText(/2 files/));
 
     // Click preview button
-    const previewBtn = await screen.findByText("Preview Sources");
+    const previewBtn = await screen.findByText("Preview sources");
     fireEvent.click(previewBtn);
 
     // In the preview drawer, shared.js should appear only once (deduped)
@@ -1378,7 +1378,7 @@ describe("DashboardApp", () => {
     await screen.findByText(/1 files/);
 
     // Trigger full file load via preview
-    const previewBtn = await screen.findByText("Preview Sources");
+    const previewBtn = await screen.findByText("Preview sources");
     fireEvent.click(previewBtn);
 
     await waitFor(() => {

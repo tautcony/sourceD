@@ -59,6 +59,26 @@
     "message": "权限说明",
     "description": "设置页章节标题"
   },
+  "optionsPermissionWebRequestBody": {
+    "message": "用于检测引用了 source map 的 JavaScript 文件",
+    "description": "webRequest 权限说明"
+  },
+  "optionsPermissionDownloadsBody": {
+    "message": "用于将还原出的源码压缩包保存到磁盘",
+    "description": "downloads 权限说明"
+  },
+  "optionsPermissionTabsBody": {
+    "message": "用于将检测结果与当前浏览器标签页关联",
+    "description": "tabs 权限说明"
+  },
+  "optionsPermissionStorageBody": {
+    "message": "用于在本地持久化存储 map 元数据和文件内容",
+    "description": "storage 权限说明"
+  },
+  "optionsPermissionHostsBody": {
+    "message": "因为 source map 可能托管在任意来源",
+    "description": "主机权限说明"
+  },
   "optionsPrivacyTitle": {
     "message": "隐私说明",
     "description": "设置页章节标题"
@@ -402,6 +422,18 @@
   "dashboardImportResultRejected": {
     "message": "跳过了 $1 个文件",
     "description": "导入时跳过文件提示"
+  },
+  "dashboardSettingsGroupDisplay": {
+    "message": "显示",
+    "description": "设置分组"
+  },
+  "dashboardSettingLanguage": {
+    "message": "界面语言",
+    "description": "设置标签"
+  },
+  "dashboardSettingLanguageAuto": {
+    "message": "跟随浏览器",
+    "description": "语言选项"
   },
   "dashboardCleanup": {
     "message": "优化数据存储",

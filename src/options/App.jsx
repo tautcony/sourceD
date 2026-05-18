@@ -3,7 +3,9 @@ import {
   Button, Typography, Card, Statistic, Flex, ConfigProvider,
 } from "antd";
 import { DashboardOutlined } from "@ant-design/icons";
-import { i18nMessage } from "../shared/utils.mjs";
+import { i18nMessage, setI18nLocale, uiLocale } from "../shared/utils.mjs";
+import enMessages from "../../_locales/en/messages.json";
+import zhCNMessages from "../../_locales/zh_CN/messages.json";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -11,16 +13,27 @@ export default function OptionsApp() {
   const manifest = chrome.runtime.getManifest();
   const [mapCount, setMapCount] = useState("-");
   const [pageCount, setPageCount] = useState("-");
+  const [locale, setLocale] = useState("en-US");
 
   useEffect(() => {
-    const locale = chrome.i18n.getUILanguage() || "en";
-    document.documentElement.lang = /^zh\b/i.test(locale) ? "zh-CN" : "en";
+    const browserLang = chrome.i18n.getUILanguage() || "en";
+    const isZh = /^zh\b/i.test(browserLang);
+    document.documentElement.lang = isZh ? "zh-CN" : "en";
+    setI18nLocale(isZh ? zhCNMessages : enMessages);
     document.title = i18nMessage("optionsPageTitle");
 
     chrome.runtime.sendMessage({ action: "getDashboardData" }, (data) => {
       if (!data) return;
       setMapCount(String(data.totalVersions || 0));
       setPageCount(String((data.pages || []).length));
+      if (data.settings?.uiLanguage) {
+        const effectiveLang = uiLocale(data.settings);
+        const useZh = effectiveLang === "zh-CN";
+        document.documentElement.lang = useZh ? "zh-CN" : "en";
+        setI18nLocale(useZh ? zhCNMessages : enMessages);
+        document.title = i18nMessage("optionsPageTitle");
+        setLocale(effectiveLang);
+      }
     });
   }, []);
 

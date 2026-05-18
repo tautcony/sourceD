@@ -1,39 +1,33 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
-  Button, Space, Typography, Tree, Empty, Spin, Flex, ConfigProvider,
-  Card, Collapse, Statistic, Form, InputNumber, Switch, Tag, Tabs, App, Drawer, Input, Modal, Select,
+  Button, Space, Typography, Empty, Spin, Flex, ConfigProvider,
+  Card, Collapse, Statistic, Tag, Tabs, App,
 } from "antd";
+import enUS from "antd/locale/en_US";
+import zhCN from "antd/locale/zh_CN";
 import {
-  ReloadOutlined, DownloadOutlined, DeleteOutlined,
-  FolderOutlined, FileOutlined, GlobalOutlined,
-  FileTextOutlined, ClockCircleOutlined, EyeOutlined, ClearOutlined, UploadOutlined,
+  ReloadOutlined, DeleteOutlined,
+  GlobalOutlined, ClockCircleOutlined, ClearOutlined, UploadOutlined,
 } from "@ant-design/icons";
-import hljs from "highlight.js/lib/core";
-import javascript from "highlight.js/lib/languages/javascript";
-import typescript from "highlight.js/lib/languages/typescript";
-import css from "highlight.js/lib/languages/css";
-import xml from "highlight.js/lib/languages/xml";
-import json from "highlight.js/lib/languages/json";
-import "highlight.js/styles/github.css";
 import {
   i18nMessage,
   fileSizeIEC,
-  normalizeDomainFilterList,
-  sourceMapTreePath,
   uiLocale,
+  setI18nLocale,
 } from "../shared/utils.mjs";
-import { downloadGroup, versionZipBaseName, extractSourceFiles } from "../popup/sourcemap.mjs";
-
-hljs.registerLanguage("javascript", javascript);
-hljs.registerLanguage("typescript", typescript);
-hljs.registerLanguage("css", css);
-hljs.registerLanguage("xml", xml);
-hljs.registerLanguage("json", json);
-
-const versionFilesCache = new Map();
-const MAX_HIGHLIGHT_CHARS = 200000;
-const EXPAND_ALL_MAP_FILES_LIMIT = 50;
-const EXPAND_ALL_SOURCE_FILES_LIMIT = 200;
+import enMessages from "../../_locales/en/messages.json";
+import zhCNMessages from "../../_locales/zh_CN/messages.json";
+import { runtimeMessageError } from "../shared/runtime-utils.js";
+import DistributionChart from "./DistributionChart.jsx";
+import VersionPanel, { versionFilesCache } from "./VersionPanel.jsx";
+import SettingsSection from "./SettingsSection.jsx";
+import ImportMapsModal from "./ImportMapsModal.jsx";
+import {
+  formatShortDate,
+  formatVersionTime,
+  groupPagesByDomain,
+  renderCleanupSummary,
+} from "./helpers.jsx";
 
 const { Title, Text } = Typography;
 const defaultDashboardSettings = {
@@ -46,846 +40,8 @@ const defaultDashboardSettings = {
   fetchDelayMs: 300,
   fetchTimeoutMs: 30_000,
   maxMapBytes: 50 * 1024 * 1024,
+  uiLanguage: "auto",
 };
-
-function runtimeMessageError() {
-  const err = chrome.runtime?.lastError;
-  if (!err) return null;
-  return err instanceof Error ? err : new Error(err.message || String(err));
-}
-
-function cleanupStepStatus(step) {
-  if (step?.ok === false) return "Failed";
-  if (step?.changed) return "Changed";
-  return "OK";
-}
-
-function renderCleanupSummary(resp, fallbackError) {
-  const steps = Array.isArray(resp?.steps) ? resp.steps : [];
-  const cleaned = Array.isArray(resp?.cleaned) ? resp.cleaned : [];
-  const stats = resp?.stats || {};
-  const rows = [];
-
-  if (resp?.ok) {
-    rows.push(`Versions removed: ${Number(stats.removedVersions) || 0}`);
-    rows.push(`Maps removed: ${Number(stats.removedMaps) || 0}`);
-    rows.push(`Bytes reclaimed: ${fileSizeIEC(Number(stats.reclaimedBytes) || 0)}`);
-    rows.push(`Hash refs upgraded: ${Number(stats.upgradedRefs) || 0}`);
-    rows.push(`Version signatures upgraded: ${Number(stats.upgradedVersions) || 0}`);
-  } else {
-    rows.push(`Error: ${resp?.error || fallbackError}`);
-  }
-
-  if (cleaned.length) {
-    rows.push("Cleaned versions:");
-    cleaned.forEach((item) => {
-      rows.push(`- ${item.pageUrl} (${item.reason}, ${item.mapCount} maps)`);
-    });
-  }
-
-  if (steps.length) {
-    rows.push("Steps:");
-    steps.forEach((step) => {
-      rows.push(`- [${cleanupStepStatus(step)}] ${step.label || step.id}: ${step.summary || ""}`.trim());
-    });
-  }
-
-  return (
-    <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "'Menlo', 'Consolas', 'Courier New', monospace", fontSize: 12, lineHeight: 1.6 }}>
-      {rows.join("\n")}
-    </pre>
-  );
-}
-
-function guessLanguage(filename) {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  const map = { js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript", ts: "typescript", tsx: "typescript", css: "css", scss: "css", less: "css", html: "xml", htm: "xml", svg: "xml", vue: "xml", json: "json" };
-  return map[ext] || null;
-}
-
-function CodePreview({ code, filename }) {
-  const codeRef = useRef(null);
-  useEffect(() => {
-    /* c8 ignore next */
-    if (!codeRef.current || !code) return;
-    const currentCode = codeRef.current;
-    currentCode.textContent = code;
-    /* c8 ignore next 2 */
-    const lang = guessLanguage(filename || "");
-    if (!lang || code.length > MAX_HIGHLIGHT_CHARS) return;
-    const timer = setTimeout(() => {
-      try {
-        const result = hljs.highlight(code, { language: lang });
-        currentCode.innerHTML = result.value;
-      } catch {
-        currentCode.textContent = code;
-      }
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [code, filename]);
-
-  return (
-    <pre style={{ margin: 0, padding: 12, overflow: "auto", fontSize: 12, lineHeight: 1.5, background: "#f6f8fa", borderRadius: 4, minHeight: 200, maxHeight: "calc(100vh - 200px)" }}>
-      <code ref={codeRef} style={{ fontFamily: "'Menlo', 'Consolas', 'Courier New', monospace", whiteSpace: "pre" }} />
-    </pre>
-  );
-}
-
-function formatShortDate(iso) {
-  if (!iso) return i18nMessage("commonUnknown");
-  return new Date(iso).toLocaleDateString(uiLocale(), { month: "2-digit", day: "2-digit" });
-}
-
-function formatVersionTime(iso) {
-  if (!iso) return i18nMessage("commonUnknown");
-  return new Date(iso).toLocaleString(uiLocale(), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-function buildMapTree(files) {
-  const root = { folders: {}, files: [] };
-  files.forEach((file) => {
-    const parts = sourceMapTreePath(file.url);
-    let node = root;
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (!node.folders[parts[i]]) {
-        node.folders[parts[i]] = { name: parts[i], folders: {}, files: [] };
-      }
-      node = node.folders[parts[i]];
-    }
-    node.files.push({
-      name: parts[parts.length - 1],
-      url: file.url,
-      size: Number(file.byteSize) || file.content.length,
-      refCount: Number(file.refCount) || 1,
-    });
-  });
-  return root;
-}
-
-function toAntdTreeData(node, pathPrefix = "") {
-  const children = [];
-  for (const name of Object.keys(node.folders).sort()) {
-    const folder = node.folders[name];
-    const folderPath = pathPrefix + name + "/";
-    children.push({
-      title: name,
-      key: "folder-" + folderPath,
-      icon: <FolderOutlined />,
-      children: toAntdTreeData(folder, folderPath),
-    });
-  }
-  for (const file of [...node.files].sort((a, b) => a.name.localeCompare(b.name))) {
-    children.push({
-      title: (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
-          <Text ellipsis={{ tooltip: file.url }} style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>{file.name}</Text>
-          {file.refCount > 1 ? (
-            <Tag color="gold" style={{ flexShrink: 0, marginInlineEnd: 0 }}>
-              {i18nMessage("commonReferenceCount", [String(file.refCount)])}
-            </Tag>
-          ) : null}
-          <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fileSizeIEC(file.size)}</Text>
-        </span>
-      ),
-      key: "file-" + file.url,
-      icon: <FileOutlined />,
-      isLeaf: true,
-    });
-  }
-  return children;
-}
-
-function buildSourceTree(sourceFiles) {
-  const root = { folders: {}, files: [] };
-  sourceFiles.forEach(({ path, content }) => {
-    const parts = path.split("/").filter(Boolean);
-    /* c8 ignore next */
-    if (!parts.length) return; // skip empty paths
-    let node = root;
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (!node.folders[parts[i]]) {
-        node.folders[parts[i]] = { name: parts[i], folders: {}, files: [] };
-      }
-      node = node.folders[parts[i]];
-    }
-    node.files.push({ name: parts[parts.length - 1], path, content, size: content.length });
-  });
-  return root;
-}
-
-function toSourceTreeData(node, pathPrefix = "") {
-  const children = [];
-  for (const name of Object.keys(node.folders).sort()) {
-    const folder = node.folders[name];
-    const folderPath = pathPrefix + name + "/";
-    children.push({
-      title: name,
-      key: "sfolder-" + folderPath,
-      icon: <FolderOutlined />,
-      children: toSourceTreeData(folder, folderPath),
-      selectable: false,
-    });
-  }
-  for (const file of [...node.files].sort((a, b) => a.name.localeCompare(b.name))) {
-    children.push({
-      title: (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", minWidth: 0, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden" }}>
-          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{file.name}</span>
-          <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fileSizeIEC(file.size)}</Text>
-        </span>
-      ),
-      key: "sfile-" + file.path,
-      icon: <FileTextOutlined />,
-      isLeaf: true,
-      _file: file,
-    });
-  }
-  return children;
-}
-
-function limitedExpandedKeys(treeData, expandAll) {
-  if (expandAll) return undefined;
-  return treeData
-    .filter((item) => Array.isArray(item.children) && item.children.length > 0)
-    .map((item) => item.key);
-}
-
-function groupPagesByDomain(pages) {
-  const buckets = {};
-  pages.forEach((page) => {
-    const siteKey = page.siteKey || i18nMessage("commonUnknown");
-    if (!buckets[siteKey]) {
-      buckets[siteKey] = { siteKey, pages: [], versionCount: 0, mapCount: 0, byteSize: 0, lastSeenAt: null };
-    }
-    buckets[siteKey].pages.push(page);
-    page.versions.forEach((version) => {
-      buckets[siteKey].versionCount += 1;
-      buckets[siteKey].mapCount += Number(version.mapCount) || 0;
-      buckets[siteKey].byteSize += Number(version.byteSize) || 0;
-    });
-    const pageLastSeenAt = page.versions[0]?.lastSeenAt;
-    if (!buckets[siteKey].lastSeenAt || new Date(pageLastSeenAt) > new Date(buckets[siteKey].lastSeenAt)) {
-      buckets[siteKey].lastSeenAt = pageLastSeenAt;
-    }
-  });
-  return Object.values(buckets)
-    .map((b) => {
-      /* c8 ignore next */
-      b.pages.sort((a, c) => new Date(c.versions[0]?.lastSeenAt || 0) - new Date(a.versions[0]?.lastSeenAt || 0));
-      return b;
-    })
-    /* c8 ignore next */
-    .sort((a, b) => new Date(b.lastSeenAt || 0) - new Date(a.lastSeenAt || 0));
-}
-
-const distributionPalette = [
-  "#1677ff",
-  "#52c41a",
-  "#faad14",
-  "#722ed1",
-  "#eb2f96",
-  "#13c2c2",
-  "#fa541c",
-  "#2f54eb",
-];
-
-function DistributionChart({ items }) {
-  const normalizedItems = useMemo(() => {
-    return items
-     .filter((item) => item && item.siteKey)
-     .slice()
-     .sort((a, b) => (Number(b.byteSize) || 0) - (Number(a.byteSize) || 0))
-     .map((item, index) => ({
-       ...item,
-       color: distributionPalette[index % distributionPalette.length],
-     }));
-  }, [items]);
-
-  const totalBytes = useMemo(() => {
-    return normalizedItems.reduce((sum, item) => sum + (Number(item.byteSize) || 0), 0);
-  }, [normalizedItems]);
-
-  const chartStops = useMemo(() => {
-    if (!normalizedItems.length) return [];
-    const totalWeight = totalBytes > 0 ? totalBytes : normalizedItems.length;
-    let offset = 0;
-    return normalizedItems.map((item) => {
-     const weight = totalBytes > 0 ? (Number(item.byteSize) || 0) : 1;
-     const nextOffset = offset + (weight / totalWeight) * 360;
-     const stop = {
-       ...item,
-       from: offset,
-       to: nextOffset,
-       percent: totalBytes > 0 ? ((Number(item.byteSize) || 0) / totalBytes) * 100 : 0,
-     };
-     offset = nextOffset;
-     return stop;
-    });
-  }, [normalizedItems, totalBytes]);
-
-  const chartBackground = useMemo(() => {
-    if (!chartStops.length) return "#f0f0f0";
-    return `conic-gradient(${chartStops.map((item) => `${item.color} ${item.from}deg ${item.to}deg`).join(", ")})`;
-  }, [chartStops]);
-
-  return (
-    <Flex gap={24} wrap="wrap" align="stretch">
-     <Flex justify="center" align="center" style={{ flex: "0 0 220px", width: 220 }}>
-       <div
-         role="img"
-         aria-label="Storage distribution pie chart"
-         style={{
-           width: 220,
-           height: 220,
-           borderRadius: "50%",
-           background: chartBackground,
-           position: "relative",
-           flexShrink: 0,
-         }}
-       >
-         <Flex
-           vertical
-           justify="center"
-           align="center"
-           style={{
-             position: "absolute",
-             inset: 36,
-             borderRadius: "50%",
-             background: "#fff",
-             textAlign: "center",
-             padding: 12,
-           }}
-         >
-           <Text type="secondary" style={{ fontSize: 12 }}>{i18nMessage("dashboardDistributionTitle")}</Text>
-           <Text strong>{fileSizeIEC(totalBytes)}</Text>
-         </Flex>
-       </div>
-     </Flex>
-     <Flex
-       data-testid="dashboard-distribution-legend"
-       vertical
-       gap={10}
-       style={{
-         flex: "1 1 280px",
-         minWidth: 280,
-         height: 220,
-         maxHeight: 220,
-         overflowY: "auto",
-         paddingRight: 4,
-       }}
-     >
-       {chartStops.map((item) => (
-         <Flex key={item.siteKey} align="center" gap={10} style={{ minWidth: 0 }}>
-           <span
-             aria-hidden="true"
-             style={{
-               width: 10,
-               height: 10,
-               borderRadius: "50%",
-               background: item.color,
-               flexShrink: 0,
-             }}
-           />
-           <Flex justify="space-between" align="center" style={{ minWidth: 0, flex: 1, gap: 12 }}>
-             <Flex vertical gap={2} style={{ minWidth: 0, flex: 1 }}>
-               <Text strong ellipsis={{ tooltip: item.siteKey }}>{item.siteKey}</Text>
-               <Text type="secondary" style={{ fontSize: 12 }}>
-                 {[i18nMessage("dashboardDistributionVersions", [String(item.versionCount)]), i18nMessage("dashboardDistributionMaps", [String(item.mapCount)]), fileSizeIEC(item.byteSize || 0)].join(" · ")}
-               </Text>
-             </Flex>
-             <Text type="secondary" style={{ flexShrink: 0 }}>
-               {`${item.percent.toFixed(1)}%`}
-             </Text>
-           </Flex>
-         </Flex>
-       ))}
-     </Flex>
-    </Flex>
-  );
-}
-
-// ─── Version Panel ──────────────────────────────────────────────────────────────
-
-function VersionPanel({ version }) {
-  const [files, setFiles] = useState(null);
-  const [fullFiles, setFullFiles] = useState(null);
-  const [loadingFiles, setLoadingFiles] = useState(true);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [sourceFiles, setSourceFiles] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const previewCacheRef = useRef(null);
-
-  useEffect(() => {
-    if (versionFilesCache.has(version.id)) {
-      setLoadingFiles(false);
-      setFiles(versionFilesCache.get(version.id));
-      return;
-    }
-    chrome.runtime.sendMessage({ action: "getVersionFiles", versionId: version.id, includeContent: false }, (resp) => {
-      const err = runtimeMessageError();
-      if (err) {
-        console.error("[SourceD] dashboard getVersionFiles failed:", version.id, err);
-        setLoadingFiles(false);
-        setFiles([]);
-        return;
-      }
-      if (!resp?.ok) {
-        console.error("[SourceD] dashboard getVersionFiles returned error:", version.id, resp?.error || "unknown error");
-        setLoadingFiles(false);
-        setFiles([]);
-        return;
-      }
-      const nextFiles = resp.files || [];
-      versionFilesCache.set(version.id, nextFiles);
-      setLoadingFiles(false);
-      setFiles(nextFiles);
-    });
-  }, [version.id]);
-
-  useEffect(() => {
-    previewCacheRef.current = null;
-    setFullFiles(null);
-  }, [files]);
-
-  const ensureFullFiles = useCallback(() => {
-    if (fullFiles?.length) return Promise.resolve(fullFiles);
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ action: "getVersionFiles", versionId: version.id, includeContent: true }, (resp) => {
-        const err = runtimeMessageError();
-        if (err) {
-          console.error("[SourceD] dashboard full getVersionFiles failed:", version.id, err);
-          reject(err);
-          return;
-        }
-        if (!resp?.ok) {
-          const nextError = new Error(resp?.error || "Failed to load version files");
-          console.error("[SourceD] dashboard full getVersionFiles returned error:", version.id, nextError.message);
-          reject(nextError);
-          return;
-        }
-        const nextFiles = resp.files || [];
-        setFullFiles(nextFiles);
-        resolve(nextFiles);
-      });
-    });
-  }, [fullFiles, version.id]);
-
-  useEffect(() => {
-    if (!previewOpen) return undefined;
-    if (fullFiles == null) return undefined;
-    if (!fullFiles.length) {
-      setSourceFiles([]);
-      setSelectedFile(null);
-      setPreviewLoading(false);
-      return undefined;
-    }
-    if (previewCacheRef.current) {
-      setSourceFiles(previewCacheRef.current);
-      setSelectedFile((current) => current || null);
-      setPreviewLoading(false);
-      return undefined;
-    }
-    setPreviewLoading(true);
-    setSourceFiles(null);
-    setSelectedFile(null);
-    const timer = setTimeout(() => {
-      const extracted = extractSourceFiles(fullFiles);
-      previewCacheRef.current = extracted;
-      setSourceFiles(extracted);
-      setSelectedFile(null);
-      setPreviewLoading(false);
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [previewOpen, fullFiles]);
-
-  const handleDownload = useCallback(() => {
-    /* c8 ignore next */
-    if (!files?.length) return;
-    ensureFullFiles()
-      .then((nextFiles) => downloadGroup(nextFiles, null, versionZipBaseName(nextFiles, version)))
-      .catch((err) => console.error("[SourceD] version download failed:", err));
-  }, [ensureFullFiles, files, version]);
-
-  const handlePreview = useCallback(() => {
-    /* c8 ignore next */
-    if (!files?.length) return;
-    setPreviewLoading(true);
-    setPreviewOpen(true);
-    ensureFullFiles().catch((err) => {
-      console.error("[SourceD] version preview file load failed:", err);
-      setPreviewLoading(false);
-      setSourceFiles([]);
-      setSelectedFile(null);
-    });
-  }, [ensureFullFiles, files]);
-
-  const sourceTreeData = useMemo(() => {
-    if (!sourceFiles?.length) return [];
-    return toSourceTreeData(buildSourceTree(sourceFiles));
-  }, [sourceFiles]);
-
-  const treeData = useMemo(() => {
-    if (!files?.length) return [];
-    return toAntdTreeData(buildMapTree(files));
-  }, [files]);
-
-  const versionTreeExpandAll = (files?.length || 0) <= EXPAND_ALL_MAP_FILES_LIMIT;
-  const versionTreeExpandedKeys = useMemo(
-    () => limitedExpandedKeys(treeData, versionTreeExpandAll),
-    [treeData, versionTreeExpandAll],
-  );
-
-  const sourceTreeExpandAll = (sourceFiles?.length || 0) <= EXPAND_ALL_SOURCE_FILES_LIMIT;
-  const sourceTreeExpandedKeys = useMemo(
-    () => limitedExpandedKeys(sourceTreeData, sourceTreeExpandAll),
-    [sourceTreeData, sourceTreeExpandAll],
-  );
-
-  const sourceFileMap = useMemo(() => {
-    const map = {};
-    function walk(nodes) {
-      for (const n of nodes) {
-        if (n._file) map[n.key] = n._file;
-        if (n.children) walk(n.children);
-      }
-    }
-    walk(sourceTreeData);
-    return map;
-  }, [sourceTreeData]);
-
-  const handleTreeSelect = useCallback((selectedKeys) => {
-    /* c8 ignore next 2 */
-    if (selectedKeys.length && sourceFileMap[selectedKeys[0]]) {
-      setSelectedFile(sourceFileMap[selectedKeys[0]]);
-    }
-  }, [sourceFileMap]);
-
-  useEffect(() => {
-    return () => { setPreviewOpen(false); };
-  }, []);
-
-  if (loadingFiles) {
-    return <Spin size="small" style={{ padding: 16 }} />;
-  }
-
-  if (!files || !files.length) {
-    return <Empty description={i18nMessage("dashboardEmptyVersionFiles")} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
-  }
-
-  return (
-    <Flex vertical gap={8} style={{ padding: "8px 0" }}>
-      <Flex justify="space-between" align="center">
-        <Space>
-          <Text type="secondary">{i18nMessage("dashboardVersionFiles", [String(files.length)])}</Text>
-          <Text type="secondary">{fileSizeIEC(version.byteSize || 0)}</Text>
-        </Space>
-        <Space>
-          <Button size="small" icon={<EyeOutlined />} onClick={handlePreview}>
-            {i18nMessage("dashboardPreviewSources")}
-          </Button>
-          <Button size="small" icon={<DownloadOutlined />} onClick={handleDownload}>
-            {i18nMessage("dashboardDownloadVersion")}
-          </Button>
-        </Space>
-      </Flex>
-      <Tree
-        showIcon
-        blockNode
-        defaultExpandAll={versionTreeExpandAll}
-        defaultExpandedKeys={versionTreeExpandedKeys}
-        treeData={treeData}
-        style={{ fontSize: 12, width: "100%", minWidth: 0, overflow: "hidden" }}
-      />
-      <Drawer
-        title={i18nMessage("dashboardPreviewTitle")}
-        open={previewOpen}
-        onClose={() => { setPreviewOpen(false); setSelectedFile(null); }}
-        destroyOnClose
-        size="70vw"
-        styles={{ body: { padding: 0, display: "flex", flexDirection: "column", overflow: "hidden" } }}
-      >
-        {previewLoading ? (
-          <Flex justify="center" align="center" style={{ height: "100%" }}>
-            <Spin />
-          </Flex>
-        ) : sourceFiles && sourceFiles.length > 0 ? (
-          <Flex style={{ height: "100%", overflow: "hidden" }}>
-            <div style={{ width: 360, minWidth: 260, borderRight: "1px solid #f0f0f0", overflow: "auto", padding: "8px 0" }}>
-              <Tree
-                showIcon
-                blockNode
-                defaultExpandAll={sourceTreeExpandAll}
-                defaultExpandedKeys={sourceTreeExpandedKeys}
-                treeData={sourceTreeData}
-                onSelect={handleTreeSelect}
-                style={{ fontSize: 12, width: "100%", minWidth: 0, overflow: "hidden" }}
-              />
-            </div>
-            <div style={{ flex: 1, overflow: "auto", padding: 0 }}>
-              {selectedFile ? (
-                <Flex vertical gap={0}>
-                  <Flex justify="space-between" align="center" style={{ padding: "8px 12px", borderBottom: "1px solid #f0f0f0", background: "#fafafa" }}>
-                    <Text strong ellipsis={{ tooltip: selectedFile.path }} style={{ minWidth: 0, flex: 1 }}>
-                      {selectedFile.path}
-                    </Text>
-                    <Text type="secondary" style={{ flexShrink: 0, marginLeft: 8, fontSize: 12 }}>
-                      {fileSizeIEC(selectedFile.size)}
-                    </Text>
-                  </Flex>
-                  <CodePreview code={selectedFile.content} filename={selectedFile.name} />
-                </Flex>
-              ) : (
-                <Empty description={i18nMessage("dashboardPreviewEmpty")} style={{ marginTop: 80 }} />
-              )}
-            </div>
-          </Flex>
-        ) : (
-          <Empty description={i18nMessage("dashboardPreviewEmpty")} style={{ marginTop: 80 }} />
-        )}
-      </Drawer>
-    </Flex>
-  );
-}
-
-// ─── Settings Form ──────────────────────────────────────────────────────────────
-
-function SettingsSection({ settings, onReload }) {
-  const [form] = Form.useForm();
-  const [saving, setSaving] = useState(false);
-  const { message } = App.useApp();
-
-  useEffect(() => {
-    if (settings) {
-      form.setFieldsValue({
-        retentionDays: settings.retentionDays,
-        maxVersionsPerPage: settings.maxVersionsPerPage,
-        autoCleanup: !!settings.autoCleanup,
-        detectionEnabled: settings.detectionEnabled !== false,
-        ignoredDomains: (settings.ignoredDomains || []).join("\n"),
-        sizeDisplayMode: settings.sizeDisplayMode || "uncompressed",
-        fetchDelayMs: settings.fetchDelayMs,
-        fetchTimeoutMs: settings.fetchTimeoutMs,
-        maxMapBytes: settings.maxMapBytes,
-      });
-    }
-  }, [settings, form]);
-
-  const handleSave = useCallback((values) => {
-    setSaving(true);
-    chrome.runtime.sendMessage({
-      action: "updateSettings",
-      settings: {
-        retentionDays: Number(values.retentionDays) || 30,
-        maxVersionsPerPage: Number(values.maxVersionsPerPage) || 10,
-        autoCleanup: !!values.autoCleanup,
-        detectionEnabled: values.detectionEnabled !== false,
-        ignoredDomains: normalizeDomainFilterList(values.ignoredDomains),
-        sizeDisplayMode: values.sizeDisplayMode === "compressed" ? "compressed" : "uncompressed",
-        fetchDelayMs: Number(values.fetchDelayMs) || 300,
-        fetchTimeoutMs: Number(values.fetchTimeoutMs) || 30_000,
-        maxMapBytes: Number(values.maxMapBytes) || 50 * 1024 * 1024,
-      },
-    }, (resp) => {
-      setSaving(false);
-      if (!resp?.ok) {
-        message.error(resp?.error || i18nMessage("dashboardSaveFailed"));
-        return;
-      }
-      message.success(i18nMessage("dashboardSaved"));
-      onReload();
-    });
-  }, [message, onReload]);
-
-  return (
-    <Form form={form} layout="vertical" onFinish={handleSave}>
-      <Flex vertical gap={12} style={{ maxWidth: 560 }}>
-        <Card size="small" title={i18nMessage("dashboardSettingsGroupAnalysis")}>
-          <Flex vertical gap={4}>
-            <Form.Item name="detectionEnabled" valuePropName="checked" style={{ marginBottom: 12 }}>
-              <Switch checkedChildren={i18nMessage("dashboardSettingDetectionEnabled")} unCheckedChildren={i18nMessage("dashboardSettingDetectionEnabled")} />
-            </Form.Item>
-            <Form.Item label={i18nMessage("dashboardSettingIgnoredDomains")} name="ignoredDomains" extra={i18nMessage("dashboardSettingIgnoredDomainsHelp")} style={{ marginBottom: 0 }}>
-              <Input.TextArea rows={5} placeholder={i18nMessage("dashboardSettingIgnoredDomainsPlaceholder")} />
-            </Form.Item>
-          </Flex>
-        </Card>
-
-        <Card size="small" title={i18nMessage("dashboardSettingsGroupCapture")}>
-          <Form.Item label={i18nMessage("dashboardSettingSizeDisplayMode")} name="sizeDisplayMode">
-            <Select
-              options={[
-                { value: "uncompressed", label: i18nMessage("dashboardSettingSizeDisplayUncompressed") },
-                { value: "compressed", label: i18nMessage("dashboardSettingSizeDisplayCompressed") },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item label={i18nMessage("dashboardSettingFetchDelayMs")} name="fetchDelayMs">
-            <InputNumber min={0} max={5000} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item label={i18nMessage("dashboardSettingFetchTimeoutMs")} name="fetchTimeoutMs">
-            <InputNumber min={500} max={120_000} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item label={i18nMessage("dashboardSettingMaxMapBytes")} name="maxMapBytes" style={{ marginBottom: 0 }}>
-            <InputNumber min={1024 * 1024} max={500 * 1024 * 1024} style={{ width: "100%" }} />
-          </Form.Item>
-        </Card>
-
-        <Card size="small" title={i18nMessage("dashboardSettingsGroupRetention")}>
-          <Form.Item label={i18nMessage("dashboardSettingRetentionDays")} name="retentionDays">
-            <InputNumber min={1} max={365} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item label={i18nMessage("dashboardSettingMaxVersions")} name="maxVersionsPerPage">
-            <InputNumber min={1} max={100} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="autoCleanup" valuePropName="checked" style={{ marginBottom: 0 }}>
-            <Switch checkedChildren={i18nMessage("dashboardSettingAutoCleanup")} unCheckedChildren={i18nMessage("dashboardSettingAutoCleanup")} />
-          </Form.Item>
-        </Card>
-
-        <Form.Item style={{ marginBottom: 0 }}>
-          <Button type="primary" htmlType="submit" loading={saving}>
-            {i18nMessage("dashboardSaveSettings")}
-          </Button>
-        </Form.Item>
-      </Flex>
-    </Form>
-  );
-}
-
-function ImportMapsModal({ open, importing, onCancel, onImport }) {
-  const [pageUrl, setPageUrl] = useState("");
-  const [title, setTitle] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const inputRef = useRef(null);
-  const pageUrlRef = useRef("");
-  const titleRef = useRef("");
-  const selectedFilesRef = useRef([]);
-
-  useEffect(() => {
-    pageUrlRef.current = pageUrl;
-  }, [pageUrl]);
-
-  useEffect(() => {
-    titleRef.current = title;
-  }, [title]);
-
-  useEffect(() => {
-    selectedFilesRef.current = selectedFiles;
-  }, [selectedFiles]);
-
-  useEffect(() => {
-    if (!open) {
-      setPageUrl("");
-      setTitle("");
-      setSelectedFiles([]);
-      pageUrlRef.current = "";
-      titleRef.current = "";
-      selectedFilesRef.current = [];
-      if (inputRef.current) inputRef.current.value = "";
-    }
-  }, [open]);
-
-  const handleFileChange = useCallback((event) => {
-    const nextFiles = Array.from(event.target.files || []);
-    selectedFilesRef.current = nextFiles;
-    setSelectedFiles(nextFiles);
-  }, []);
-
-  const handleSubmit = useCallback(async () => {
-    const trimmedUrl = pageUrlRef.current.trim();
-    const filesToImport = selectedFilesRef.current;
-    if (!trimmedUrl || !filesToImport.length) return;
-
-    const files = await Promise.all(filesToImport.map(async (file) => {
-      const text = typeof file.text === "function"
-        ? await file.text()
-        : await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result || "");
-          reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
-          reader.readAsText(file);
-        });
-
-      return {
-        name: file.name,
-        mapUrl: file.webkitRelativePath || file.name,
-        content: String(text || ""),
-      };
-    }));
-
-    onImport({
-      pageUrl: trimmedUrl,
-      title: titleRef.current.trim(),
-      files,
-    });
-  }, [onImport]);
-
-  return (
-    <Modal
-      title={i18nMessage("dashboardImportTitle")}
-      open={open}
-      onCancel={onCancel}
-      onOk={handleSubmit}
-      okText={i18nMessage("dashboardImportConfirm")}
-      okButtonProps={{ disabled: !pageUrl.trim() || !selectedFiles.length, loading: importing }}
-      cancelButtonProps={{ disabled: importing }}
-      destroyOnHidden
-    >
-      <Flex vertical gap={12}>
-        <Text type="secondary">{i18nMessage("dashboardImportHelp")}</Text>
-        <Input
-          value={pageUrl}
-          onChange={(event) => setPageUrl(event.target.value)}
-          placeholder={i18nMessage("dashboardImportUrlPlaceholder")}
-          aria-label={i18nMessage("dashboardImportUrlLabel")}
-        />
-        <Input
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder={i18nMessage("dashboardImportTitlePlaceholder")}
-          aria-label={i18nMessage("dashboardImportPageTitleLabel")}
-        />
-        <Flex vertical gap={8}>
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            accept=".map,application/json"
-            onChange={handleFileChange}
-            aria-label={i18nMessage("dashboardImportFileLabel")}
-          />
-          {selectedFiles.length ? (
-            <div style={{ border: "1px solid #f0f0f0", borderRadius: 8, overflow: "hidden" }}>
-              {selectedFiles.map((file, index) => (
-                <Flex
-                  key={`${file.name}-${index}`}
-                  justify="space-between"
-                  align="center"
-                  style={{
-                    width: "100%",
-                    minWidth: 0,
-                    padding: "8px 12px",
-                    borderTop: index === 0 ? "none" : "1px solid #f0f0f0",
-                  }}
-                >
-                  <Text ellipsis={{ tooltip: file.name }} style={{ minWidth: 0 }}>{file.name}</Text>
-                  <Text type="secondary" style={{ marginLeft: 8, flexShrink: 0 }}>{fileSizeIEC(file.size || 0)}</Text>
-                </Flex>
-              ))}
-            </div>
-          ) : (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {i18nMessage("dashboardImportEmpty")}
-            </Text>
-          )}
-        </Flex>
-      </Flex>
-    </Modal>
-  );
-}
-
-// ─── Main Dashboard App ─────────────────────────────────────────────────────────
 
 function DashboardContent() {
   const { message, modal } = App.useApp();
@@ -899,6 +55,8 @@ function DashboardContent() {
   const [importOpen, setImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [activePageTabs, setActivePageTabs] = useState({});
+  const [expandedDomainKeys, setExpandedDomainKeys] = useState([]);
+  const historyCardRef = useRef(null);
   const hasLoadedDashboardRef = useRef(false);
 
   const applyDashboardData = useCallback((data) => {
@@ -920,6 +78,12 @@ function DashboardContent() {
 
     chrome.runtime.sendMessage({ action: "getDashboardData" }, (data) => {
       hasLoadedDashboardRef.current = true;
+      // Set locale synchronously before state updates so that i18nMessage()
+      // calls during the triggered re-render already see the correct locale.
+      const s = data?.settings || defaultDashboardSettings;
+      const lang = s.uiLanguage;
+      const zh = lang === "zh-CN" || (lang !== "en-US" && /^zh\b/i.test(chrome.i18n.getUILanguage() || "en"));
+      setI18nLocale(zh ? zhCNMessages : enMessages);
       setLoading(false);
       setRefreshing(false);
       applyDashboardData(data);
@@ -927,11 +91,21 @@ function DashboardContent() {
   }, [applyDashboardData]);
 
   useEffect(() => {
-    const locale = chrome.i18n.getUILanguage() || "en";
-    document.documentElement.lang = /^zh\b/i.test(locale) ? "zh-CN" : "en";
-    document.title = i18nMessage("dashboardPageTitle");
     loadData();
   }, [loadData]);
+
+  const effectiveLocale = useMemo(() => uiLocale(settings), [settings]);
+
+  const uiLang = settings?.uiLanguage;
+  const useZhCN = uiLang === "zh-CN" || (uiLang !== "en-US" && /^zh\b/i.test(chrome.i18n.getUILanguage() || "en"));
+
+  const antdLocale = useMemo(() => useZhCN ? zhCN : enUS, [useZhCN]);
+
+  useEffect(() => {
+    document.documentElement.lang = useZhCN ? "zh-CN" : "en";
+    setI18nLocale(useZhCN ? zhCNMessages : enMessages);
+    document.title = i18nMessage("dashboardPageTitle");
+  }, [useZhCN]);
 
   const [cleaning, setCleaning] = useState(false);
   const handleCleanup = useCallback(() => {
@@ -1055,6 +229,7 @@ function DashboardContent() {
     return groups.map((group) => ({
       key: group.siteKey,
       label: (
+        <div data-site-key={group.siteKey}>
         <Flex justify="space-between" align="center" style={{ overflow: "hidden" }}>
           <Flex vertical gap={2} style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
             <Flex align="center" gap={8} style={{ minWidth: 0 }}>
@@ -1068,19 +243,20 @@ function DashboardContent() {
           <Flex align="center" gap={8} style={{ flexShrink: 0, marginLeft: 12 }}>
             <Tag color="blue">{group.versionCount}</Tag>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {i18nMessage("dashboardLastUpdated", [formatShortDate(group.lastSeenAt)])}
+              {i18nMessage("dashboardLastUpdated", [formatShortDate(group.lastSeenAt, effectiveLocale)])}
             </Text>
             <Button
               size="small"
               type="text"
               danger
               icon={<DeleteOutlined />}
-                  title={i18nMessage("dashboardDeleteVersion")}
-                  aria-label={i18nMessage("dashboardDeleteVersion")}
-                  onClick={(event) => handleDeleteSite(event, group.siteKey)}
-                />
+              title={i18nMessage("dashboardDeleteVersion")}
+              aria-label={i18nMessage("dashboardDeleteVersion")}
+              onClick={(event) => handleDeleteSite(event, group.siteKey)}
+            />
           </Flex>
         </Flex>
+        </div>
       ),
       children: (
         <Tabs
@@ -1116,7 +292,7 @@ function DashboardContent() {
                   </Flex>
                   <Flex align="center" gap={8} style={{ flexShrink: 0, marginLeft: 12 }}>
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      {i18nMessage("dashboardLastUpdated", [formatShortDate(page.versions[0]?.lastSeenAt)])}
+                      {i18nMessage("dashboardLastUpdated", [formatShortDate(page.versions[0]?.lastSeenAt, effectiveLocale)])}
                     </Text>
                     <Button
                       size="small"
@@ -1140,7 +316,7 @@ function DashboardContent() {
                           <Text ellipsis={{ tooltip: version.label }}>{version.label}</Text>
                         </Flex>
                         <Flex gap={4} wrap="wrap" style={{ flexShrink: 0, marginLeft: 8 }}>
-                          <Tag>{i18nMessage("dashboardCapturedAt", [formatVersionTime(version.createdAt)])}</Tag>
+                          <Tag>{i18nMessage("dashboardCapturedAt", [formatVersionTime(version.createdAt, effectiveLocale)])}</Tag>
                           <Tag>{i18nMessage("dashboardMapCount", [String(version.mapCount || 0)])}</Tag>
                           <Button
                             size="small"
@@ -1163,10 +339,27 @@ function DashboardContent() {
         />
       ),
     }));
-  }, [activePageTabs, groups, handleDeletePage, handleDeleteSite, handleDeleteVersion, handlePageTabChange]);
+  }, [activePageTabs, groups, handleDeletePage, handleDeleteSite, handleDeleteVersion, handlePageTabChange, effectiveLocale]);
+
+  const handleLegendClick = useCallback((siteKey) => {
+    setExpandedDomainKeys((prev) => {
+      if (prev.includes(siteKey)) return prev;
+      return [...prev, siteKey];
+    });
+    setTimeout(() => {
+      const el = document.querySelector(`[data-site-key="${CSS.escape(siteKey)}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 100);
+  }, []);
+
+  const handleCollapseChange = useCallback((keys) => {
+    setExpandedDomainKeys(keys);
+  }, []);
 
   return (
-    <ConfigProvider theme={{ token: { fontSize: 13 } }}>
+    <ConfigProvider theme={{ token: { fontSize: 13 } }} locale={antdLocale}>
         <style>{`
           .ant-collapse-header { overflow: hidden; }
           .ant-collapse-header-text { overflow: hidden; min-width: 0; flex: 1; }
@@ -1224,7 +417,7 @@ function DashboardContent() {
           ) : !pages.length ? (
             <Empty description={i18nMessage("dashboardEmptyHistory")} />
           ) : (
-            <Collapse items={domainCollapseItems} />
+            <Collapse activeKey={expandedDomainKeys} onChange={handleCollapseChange} items={domainCollapseItems} />
           )}
         </Card>
 
@@ -1238,7 +431,7 @@ function DashboardContent() {
           ) : !distribution.length ? (
             <Empty description={i18nMessage("dashboardEmptyDistribution")} />
           ) : (
-            <DistributionChart items={distribution} />
+            <DistributionChart items={distribution} onLegendClick={handleLegendClick} />
           )}
         </Card>
 

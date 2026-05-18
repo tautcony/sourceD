@@ -607,6 +607,7 @@ describe("background storage helpers", () => {
       fetchDelayMs: 300,
       fetchTimeoutMs: 30_000,
       maxMapBytes: 50 * 1024 * 1024,
+      uiLanguage: "auto",
     });
 
     await storage.saveSettings({ detectionEnabled: false });

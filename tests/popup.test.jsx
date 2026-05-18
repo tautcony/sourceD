@@ -91,10 +91,14 @@ describe("PopupApp", () => {
     expect(screen.getByText("No source files detected")).toBeInTheDocument();
   });
 
-  it("shows stats text", async () => {
+  it("shows stats info icon with tooltip", async () => {
     render(<PopupApp />);
-    await screen.findByText(/versions/);
-    expect(screen.getByText(/versions/)).toBeInTheDocument();
+    const icon = document.querySelector(".anticon-info-circle");
+    expect(icon).toBeTruthy();
+    fireEvent.mouseEnter(icon);
+    await waitFor(() => {
+      expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    });
   });
 
   it("renders file tree when version data is available", async () => {
@@ -109,8 +113,12 @@ describe("PopupApp", () => {
     render(<PopupApp />);
     await screen.findByText("Download all");
     expect(screen.getByText("Download all")).toBeInTheDocument();
-    // Stats should show updated values
-    expect(screen.getByText(/3 versions/)).toBeInTheDocument();
+    // Stats should show updated values in tooltip
+    const icon = document.querySelector(".anticon-info-circle");
+    fireEvent.mouseEnter(icon);
+    await waitFor(() => {
+      expect(screen.getByText(/3 versions/)).toBeInTheDocument();
+    });
   });
 
   it("shows shared map reference count for reused files", async () => {

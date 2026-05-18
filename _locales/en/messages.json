@@ -59,6 +59,26 @@
     "message": "Permissions",
     "description": "Options section title"
   },
+  "optionsPermissionWebRequestBody": {
+    "message": "required to detect JavaScript files that reference a source map",
+    "description": "webRequest permission description"
+  },
+  "optionsPermissionDownloadsBody": {
+    "message": "required to save recovered source archives to disk",
+    "description": "downloads permission description"
+  },
+  "optionsPermissionTabsBody": {
+    "message": "required to associate findings with the active browser tab",
+    "description": "tabs permission description"
+  },
+  "optionsPermissionStorageBody": {
+    "message": "required to persist map metadata and file content locally",
+    "description": "storage permission description"
+  },
+  "optionsPermissionHostsBody": {
+    "message": "required because source maps may be hosted on any origin",
+    "description": "host permissions description"
+  },
   "optionsPrivacyTitle": {
     "message": "Privacy",
     "description": "Options section title"
@@ -402,6 +422,18 @@
   "dashboardImportResultRejected": {
     "message": "$1 files were skipped",
     "description": "Dashboard import skipped files message"
+  },
+  "dashboardSettingsGroupDisplay": {
+    "message": "Display",
+    "description": "Dashboard settings group"
+  },
+  "dashboardSettingLanguage": {
+    "message": "UI Language",
+    "description": "Dashboard setting label"
+  },
+  "dashboardSettingLanguageAuto": {
+    "message": "Follow browser",
+    "description": "Dashboard language option"
   },
   "dashboardCleanup": {
     "message": "Optimize Storage",

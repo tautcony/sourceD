@@ -108,7 +108,7 @@ describe("background sourceMaps", () => {
     }));
     fetchSourceMap("https://example.com/stall.js", callback);
     await vi.advanceTimersByTimeAsync(30_300);
-    expect(warn).toHaveBeenCalledWith("[SourceD] js fetch error:", expect.anything());
+    expect(warn).toHaveBeenCalledWith("[SourceD] js fetch 'https://example.com/stall.js' error:", expect.anything());
     expect(state.pendingSourceMapFetches.size).toBeLessThanOrEqual(1);
   });
 
@@ -141,7 +141,7 @@ describe("background sourceMaps", () => {
     });
     fetchSourceMap("https://example.com/big-for-limit.js", callback);
     await vi.advanceTimersByTimeAsync(100);
-    expect(warn).toHaveBeenCalledWith("[SourceD] js fetch error:", expect.any(Error));
+    expect(warn).toHaveBeenCalledWith("[SourceD] js fetch 'https://example.com/big-for-limit.js' error:", expect.any(Error));
 
     // Custom fetchTimeoutMs of 500 — stalled fetch should abort at 500ms
     warn.mockClear();
@@ -150,7 +150,7 @@ describe("background sourceMaps", () => {
     }));
     fetchSourceMap("https://example.com/stall-custom.js", callback);
     await vi.advanceTimersByTimeAsync(600);
-    expect(warn).toHaveBeenCalledWith("[SourceD] js fetch error:", expect.anything());
+    expect(warn).toHaveBeenCalledWith("[SourceD] js fetch 'https://example.com/stall-custom.js' error:", expect.anything());
   });
 
   it("fans out a shared fetch result to all concurrent waiters", async () => {

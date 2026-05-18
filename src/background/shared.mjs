@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS = {
   fetchDelayMs: 300,
   fetchTimeoutMs: 30_000,
   maxMapBytes: 50 * 1024 * 1024,
+  uiLanguage: "auto",
 };
 
 export const state = {

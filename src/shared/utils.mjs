@@ -1,11 +1,34 @@
 // Shared helpers for the bundled React UI.
 
-export function i18nMessage(key, substitutions) {
+var _i18nLocale = null;
+
+export function setI18nLocale(locale) {
+  _i18nLocale = locale;
+}
+
+function resolveMessage(key, substitutions) {
+  if (_i18nLocale) {
+    var entry = _i18nLocale[key];
+    if (entry && entry.message) {
+      var tpl = entry.message;
+      if (!substitutions || !substitutions.length) return tpl;
+      return tpl.replace(/\$(\d+)/g, function (_, index) {
+        var i = parseInt(index, 10) - 1;
+        return i < substitutions.length ? String(substitutions[i]) : "$" + index;
+      });
+    }
+  }
   var message = chrome.i18n.getMessage(key, substitutions);
   return message || key;
 }
 
-export function uiLocale() {
+export function i18nMessage(key, substitutions) {
+  return resolveMessage(key, substitutions) || key;
+}
+
+export function uiLocale(settings) {
+  if (settings?.uiLanguage === "en-US") return "en-US";
+  if (settings?.uiLanguage === "zh-CN") return "zh-CN";
   var lang = chrome.i18n.getUILanguage() || "en";
   return /^zh\b/i.test(lang) ? "zh-CN" : "en-US";
 }

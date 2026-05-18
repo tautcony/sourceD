@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Button, Space, Tooltip, Typography, Tree, Empty, Spin, Flex, ConfigProvider, Switch, Tag, theme } from "antd";
-import { DownloadOutlined, HistoryOutlined, DeleteOutlined, FolderOutlined, FileOutlined, GithubOutlined } from "@ant-design/icons";
+import { Button, Space, Tooltip, Typography, Tree, Empty, Spin, Flex, ConfigProvider, Switch, theme } from "antd";
+import { DownloadOutlined, HistoryOutlined, DeleteOutlined, GithubOutlined, InfoCircleOutlined } from "@ant-design/icons";
 import {
   fileSizeIEC,
   hostnameFromUrl,
@@ -8,75 +8,18 @@ import {
   isHostnameFiltered,
   normalizeDomainFilterList,
   parseFileName,
-  sourceMapTreePath,
   sanitizeFilename,
+  setI18nLocale,
+  uiLocale,
 } from "../shared/utils.mjs";
+import enMessages from "../../_locales/en/messages.json";
+import zhCNMessages from "../../_locales/zh_CN/messages.json";
+import { buildMapTree, toAntdTreeData } from "../shared/tree-utils.jsx";
+import { runtimeMessageError } from "../shared/runtime-utils.js";
 import { parseSourceMap, downloadGroup } from "./sourcemap.mjs";
 
 const { Text, Link: AntLink } = Typography;
 const REPOSITORY_URL = "https://github.com/tautcony/sourceD";
-
-function runtimeMessageError() {
-  const err = chrome.runtime?.lastError;
-  if (!err) return null;
-  return err instanceof Error ? err : new Error(err.message || String(err));
-}
-
-function buildMapTree(files) {
-  const root = { folders: {}, files: [] };
-  files.forEach((file) => {
-    const parts = sourceMapTreePath(file.url);
-    let node = root;
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (!node.folders[parts[i]]) {
-        node.folders[parts[i]] = { name: parts[i], folders: {}, files: [] };
-      }
-      node = node.folders[parts[i]];
-    }
-    node.files.push({
-      name: parts[parts.length - 1],
-      url: file.url,
-      size: Number(file.byteSize) || file.content.length,
-      refCount: Number(file.refCount) || 1,
-    });
-  });
-  return root;
-}
-
-function toAntdTreeData(node, pathPrefix = "") {
-  const children = [];
-  const folderNames = Object.keys(node.folders).sort();
-  for (const name of folderNames) {
-    const folder = node.folders[name];
-    const folderPath = pathPrefix + name + "/";
-    children.push({
-      title: name,
-      key: "folder-" + folderPath,
-      icon: <FolderOutlined />,
-      children: toAntdTreeData(folder, folderPath),
-    });
-  }
-  const sortedFiles = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
-  for (const file of sortedFiles) {
-    children.push({
-      title: (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
-          <Text ellipsis={{ tooltip: file.url }} style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>{file.name}</Text>
-          {file.refCount > 1 ? (
-            <Tag color="gold" style={{ flexShrink: 0, marginInlineEnd: 0 }}>
-              {i18nMessage("commonReferenceCount", [String(file.refCount)])}
-            </Tag>
-          ) : null}
-          <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fileSizeIEC(file.size)}</Text>
-        </span>
-      ),
-      key: "file-" + file.url,
-      icon: <FileOutlined />,
-      isLeaf: true,
-    });
-  }
-  return children;
-}
 
 export default function PopupApp() {
   const [loading, setLoading] = useState(true);
@@ -95,6 +38,8 @@ export default function PopupApp() {
       const url = tab?.url || "";
       chrome.runtime.sendMessage({ action: "getPopupState", pageUrl: url }, (data) => {
         const err = runtimeMessageError();
+        const effectiveLang = uiLocale(data?.ok ? data.settings : null);
+        setI18nLocale(effectiveLang === "zh-CN" ? zhCNMessages : enMessages);
         setLoading(false);
         setPageUrl(url);
         if (err) {
@@ -207,12 +152,11 @@ export default function PopupApp() {
     return toAntdTreeData(buildMapTree(files));
   }, [files]);
 
-  const statsText = useMemo(() => {
+  const statsTooltip = useMemo(() => {
     return [
       i18nMessage("popupStoredVersions", [String(totalVersions)]),
-      "·",
       i18nMessage("popupStorageUsed", [fileSizeIEC(totalStorageBytes)]),
-    ].join(" ");
+    ].join("\n");
   }, [totalVersions, totalStorageBytes]);
 
   return (
@@ -240,12 +184,14 @@ export default function PopupApp() {
           style={{ padding: "14px 14px 12px", borderBottom: "1px solid #dde4ec", background: "#fafbfc" }}
         >
           <Flex vertical gap={4} style={{ minWidth: 0, flex: 1 }}>
-            <Text strong style={{ fontSize: 18, letterSpacing: "-0.025em", lineHeight: 1.1 }}>
-              {i18nMessage("popupHeaderTitle")}
-            </Text>
-            <Text type="secondary" style={{ fontSize: 13, lineHeight: 1.35 }}>
-              {statsText}
-            </Text>
+            <Flex align="center" gap={8}>
+              <Text strong style={{ fontSize: 18, letterSpacing: "-0.025em", lineHeight: 1.1 }}>
+                {i18nMessage("popupHeaderTitle")}
+              </Text>
+              <Tooltip title={<pre style={{ margin: 0, fontFamily: "inherit" }}>{statsTooltip}</pre>}>
+                <InfoCircleOutlined style={{ color: "#8c8c8c", fontSize: 14, cursor: "help" }} />
+              </Tooltip>
+            </Flex>
             {currentHostname ? (
               <Flex align="center" gap={8} wrap="wrap">
                 <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.35 }}>
