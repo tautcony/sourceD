@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Flex, Input, Modal, Typography } from "antd";
+import { App, Flex, Input, Modal, Typography } from "antd";
 import { fileSizeIEC, i18nMessage } from "../shared/utils.mjs";
 
 const { Text } = Typography;
 
 export default function ImportMapsModal({ open, importing, onCancel, onImport }) {
+  const { message } = App.useApp();
   const [pageUrl, setPageUrl] = useState("");
   const [title, setTitle] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [reading, setReading] = useState(false);
   const inputRef = useRef(null);
   const pageUrlRef = useRef("");
   const titleRef = useRef("");
@@ -30,6 +32,7 @@ export default function ImportMapsModal({ open, importing, onCancel, onImport })
       setPageUrl("");
       setTitle("");
       setSelectedFiles([]);
+      setReading(false);
       pageUrlRef.current = "";
       titleRef.current = "";
       selectedFilesRef.current = [];
@@ -48,29 +51,39 @@ export default function ImportMapsModal({ open, importing, onCancel, onImport })
     const filesToImport = selectedFilesRef.current;
     if (!trimmedUrl || !filesToImport.length) return;
 
-    const files = await Promise.all(filesToImport.map(async (file) => {
-      const text = typeof file.text === "function"
-        ? await file.text()
-        : await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result || "");
-          reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
-          reader.readAsText(file);
-        });
+    setReading(true);
+    let files;
+    try {
+      files = await Promise.all(filesToImport.map(async (file) => {
+        const text = typeof file.text === "function"
+          ? await file.text()
+          : await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result || "");
+            reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
+            reader.readAsText(file);
+          });
 
-      return {
-        name: file.name,
-        mapUrl: file.webkitRelativePath || file.name,
-        content: String(text || ""),
-      };
-    }));
+        return {
+          name: file.name,
+          mapUrl: file.webkitRelativePath || file.name,
+          content: String(text || ""),
+        };
+      }));
+    } catch (err) {
+      console.error("[SourceD] ImportMapsModal file read failed:", err);
+      message.error(err?.message || "Failed to read selected files");
+      setReading(false);
+      return;
+    }
+    setReading(false);
 
     onImport({
       pageUrl: trimmedUrl,
       title: titleRef.current.trim(),
       files,
     });
-  }, [onImport]);
+  }, [message, onImport]);
 
   return (
     <Modal
@@ -79,8 +92,8 @@ export default function ImportMapsModal({ open, importing, onCancel, onImport })
       onCancel={onCancel}
       onOk={handleSubmit}
       okText={i18nMessage("dashboardImportConfirm")}
-      okButtonProps={{ disabled: !pageUrl.trim() || !selectedFiles.length, loading: importing }}
-      cancelButtonProps={{ disabled: importing }}
+      okButtonProps={{ disabled: !pageUrl.trim() || !selectedFiles.length || reading, loading: reading || importing }}
+      cancelButtonProps={{ disabled: reading || importing }}
       destroyOnHidden
     >
       <Flex vertical gap={12}>

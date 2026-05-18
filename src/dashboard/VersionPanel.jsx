@@ -123,13 +123,24 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
   const sourceFilesRef = useRef(null);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoadingFiles(true);
+    setFiles(null);
+    setPreviewOpen(false);
+    setSelectedFile(null);
+    fullFilesRef.current = null;
+    sourceFilesRef.current = null;
+
     const cacheKey = versionFilesCacheKey(version.id, sizeMode);
     if (versionFilesCache.has(cacheKey)) {
-      setLoadingFiles(false);
-      setFiles(versionFilesCache.get(cacheKey));
-      return;
+      if (!cancelled) {
+        setLoadingFiles(false);
+        setFiles(versionFilesCache.get(cacheKey));
+      }
+      return () => { cancelled = true; };
     }
     chrome.runtime.sendMessage({ action: "getVersionFiles", versionId: version.id, includeContent: false }, (resp) => {
+      if (cancelled) return;
       const err = runtimeMessageError();
       if (err) {
         console.error("[SourceD] dashboard getVersionFiles failed:", version.id, err);
@@ -148,6 +159,7 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
       setLoadingFiles(false);
       setFiles(nextFiles);
     });
+    return () => { cancelled = true; };
   }, [version.id, sizeMode]);
 
   useEffect(() => {

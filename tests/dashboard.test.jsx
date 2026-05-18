@@ -1484,4 +1484,126 @@ describe("DashboardApp", () => {
     ).length;
     expect(callsAfterSecondLoad).toBe(1);
   }, 15000);
+
+  // ─── VersionPanel stale response cancellation test ──────────────
+  it("ignores stale getVersionFiles response when version changes before callback fires", async () => {
+    let resolveVersionA = null;
+    let resolveVersionB = null;
+
+    chrome.runtime.sendMessage = vi.fn((msg, cb) => {
+      if (msg?.action === "getVersionFiles" && msg?.includeContent === false) {
+        if (msg.versionId === "vA") {
+          resolveVersionA = cb;
+        } else {
+          resolveVersionB = cb;
+        }
+        return;
+      }
+      cb({ ok: true });
+    });
+
+    const versionA = { id: "vA", byteSize: 1024 };
+    const versionB = { id: "vB", byteSize: 2048 };
+
+    const filesA = [{ url: "https://example.com/a.js.map" }];
+    const filesB = [{ url: "https://example.com/b.js.map" }];
+
+    const { rerender } = render(<VersionPanel version={versionA} sizeMode="uncompressed" />);
+
+    // Switch to version B before version A response arrives
+    rerender(<VersionPanel version={versionB} sizeMode="uncompressed" />);
+
+    // Resolve version B first, then stale version A response
+    resolveVersionB({ ok: true, files: filesB });
+    await waitFor(() => {
+      expect(screen.queryByText("No files in this version.")).not.toBeInTheDocument();
+    });
+
+    // Now fire the stale A callback — should be ignored
+    resolveVersionA({ ok: true, files: filesA });
+
+    // Final state must reflect version B (b.js.map in the tree)
+    await waitFor(() => {
+      expect(screen.getByText((c) => c.includes("b.js.map"))).toBeInTheDocument();
+      expect(screen.queryByText((c) => c.includes("a.js.map"))).not.toBeInTheDocument();
+    });
+  });
+
+  // ─── Dashboard getDashboardData runtime error test ───────────────
+  it("shows error message when getDashboardData runtime message fails", async () => {
+    chrome.runtime.sendMessage = vi.fn((msg, cb) => {
+      if (msg.action === "getDashboardData") {
+        chrome.runtime.lastError = { message: "Extension context invalidated" };
+        cb(null);
+        chrome.runtime.lastError = undefined;
+      } else {
+        cb(null);
+      }
+    });
+
+    render(<DashboardApp />);
+
+    await waitFor(() => {
+      expect(messageApi.error).toHaveBeenCalledWith(
+        expect.stringMatching(/failed to load|dashboard/i),
+      );
+    });
+  });
+
+  // ─── Dashboard delete runtime error test ────────────────────────
+  it("shows error message when deleteVersion runtime message fails", async () => {
+    mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
+    const originalSendMessage = chrome.runtime.sendMessage;
+    chrome.runtime.sendMessage = vi.fn((msg, cb) => {
+      if (msg.action === "deleteVersion") {
+        chrome.runtime.lastError = { message: "Delete runtime error" };
+        cb(null);
+        chrome.runtime.lastError = undefined;
+        return;
+      }
+      originalSendMessage(msg, cb);
+    });
+
+    render(<DashboardApp />);
+    await expandDomain();
+    await activatePageTab();
+    const versionTitle = await screen.findByText((content) => content.includes("v1.0.0-beta"));
+    const versionHeaderNode = versionTitle.closest(".ant-collapse-header");
+    const deleteBtn = within(versionHeaderNode).getByRole("button", { name: "Delete" });
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(messageApi.error).toHaveBeenCalledWith("Delete runtime error");
+    });
+  });
+
+  // ─── ImportMapsModal file read error test ───────────────────────
+  it("shows error when file read fails during import", async () => {
+    mockDashboardData({ pages: [], totalVersions: 0, totalStorageBytes: 0 });
+
+    render(<DashboardApp />);
+    fireEvent.click(screen.getByText("Import Maps").closest("button"));
+
+    const pageUrlInput = await screen.findByLabelText("Page URL");
+    fireEvent.change(pageUrlInput, { target: { value: "https://example.com/app" } });
+
+    const file = new File(["{}"], "bad.js.map", { type: "application/json" });
+    Object.defineProperty(file, "text", {
+      value: vi.fn().mockRejectedValue(new Error("Read failed")),
+    });
+
+    fireEvent.change(screen.getByLabelText("Source map files"), {
+      target: { files: [file] },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Import" })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+
+    await waitFor(() => {
+      expect(messageApi.error).toHaveBeenCalledWith("Read failed");
+    });
+  }, 15000);
 });

@@ -89,6 +89,14 @@ function DashboardContent() {
 
     chrome.runtime.sendMessage({ action: "getDashboardData" }, (data) => {
       hasLoadedDashboardRef.current = true;
+      const runtimeErr = runtimeMessageError();
+      if (runtimeErr) {
+        console.error("[SourceD] getDashboardData message failed:", runtimeErr);
+        setLoading(false);
+        setRefreshing(false);
+        message.error(i18nMessage("dashboardLoadFailed") || "Failed to load dashboard data");
+        return;
+      }
       // Set locale synchronously before state updates so that i18nMessage()
       // calls during the triggered re-render already see the correct locale.
       const s = data?.settings || defaultDashboardSettings;
@@ -106,7 +114,7 @@ function DashboardContent() {
       setRefreshing(false);
       applyDashboardData(data);
     });
-  }, [applyDashboardData]);
+  }, [applyDashboardData, message]);
 
   useEffect(() => {
     loadData();
@@ -187,24 +195,54 @@ function DashboardContent() {
 
   const handleDeleteVersion = useCallback((event, versionId) => {
     stopHeaderAction(event);
-    chrome.runtime.sendMessage({ action: "deleteVersion", versionId }, () => {
+    chrome.runtime.sendMessage({ action: "deleteVersion", versionId }, (resp) => {
+      const err = runtimeMessageError();
+      if (err) {
+        console.error("[SourceD] deleteVersion message failed:", err);
+        message.error(err.message);
+        return;
+      }
+      if (resp && !resp.ok) {
+        message.error(resp.error || "Delete failed");
+        return;
+      }
       loadData({ preserveContent: true });
     });
-  }, [loadData, stopHeaderAction]);
+  }, [loadData, message, stopHeaderAction]);
 
   const handleDeletePage = useCallback((event, pageUrl) => {
     stopHeaderAction(event);
-    chrome.runtime.sendMessage({ action: "deletePageHistory", pageUrl }, () => {
+    chrome.runtime.sendMessage({ action: "deletePageHistory", pageUrl }, (resp) => {
+      const err = runtimeMessageError();
+      if (err) {
+        console.error("[SourceD] deletePageHistory message failed:", err);
+        message.error(err.message);
+        return;
+      }
+      if (resp && !resp.ok) {
+        message.error(resp.error || "Delete failed");
+        return;
+      }
       loadData({ preserveContent: true });
     });
-  }, [loadData, stopHeaderAction]);
+  }, [loadData, message, stopHeaderAction]);
 
   const handleDeleteSite = useCallback((event, siteKey) => {
     stopHeaderAction(event);
-    chrome.runtime.sendMessage({ action: "deleteSiteHistory", siteKey }, () => {
+    chrome.runtime.sendMessage({ action: "deleteSiteHistory", siteKey }, (resp) => {
+      const err = runtimeMessageError();
+      if (err) {
+        console.error("[SourceD] deleteSiteHistory message failed:", err);
+        message.error(err.message);
+        return;
+      }
+      if (resp && !resp.ok) {
+        message.error(resp.error || "Delete failed");
+        return;
+      }
       loadData({ preserveContent: true });
     });
-  }, [loadData, stopHeaderAction]);
+  }, [loadData, message, stopHeaderAction]);
 
   const handleImportMaps = useCallback((payload) => {
     setImporting(true);
@@ -215,6 +253,12 @@ function DashboardContent() {
       files: payload.files,
     }, (resp) => {
       setImporting(false);
+      const err = runtimeMessageError();
+      if (err) {
+        console.error("[SourceD] importSourceMaps message failed:", err);
+        message.error(err.message);
+        return;
+      }
       if (!resp?.ok) {
         message.error(resp?.error || "Import failed");
         return;

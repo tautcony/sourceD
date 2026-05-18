@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { App, Button, Card, Col, Flex, Form, Input, InputNumber, Row, Select, Switch } from "antd";
 import { i18nMessage, normalizeDomainFilterList } from "../shared/utils.mjs";
+import { runtimeMessageError } from "../shared/runtime-utils.js";
 
 export default function SettingsSection({ settings, onReload }) {
   const [form] = Form.useForm();
@@ -42,6 +43,12 @@ export default function SettingsSection({ settings, onReload }) {
       },
     }, (resp) => {
       setSaving(false);
+      const err = runtimeMessageError();
+      if (err) {
+        console.error("[SourceD] updateSettings message failed:", err);
+        message.error(err.message);
+        return;
+      }
       if (!resp?.ok) {
         message.error(resp?.error || i18nMessage("dashboardSaveFailed"));
         return;

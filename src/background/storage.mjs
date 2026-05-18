@@ -564,12 +564,13 @@ export function summarizePages() {
   const pageUrls = Object.keys(state.versionsByPage).sort((a, b) => {
     const av = state.versionIndex[state.versionsByPage[a][0]];
     const bv = state.versionIndex[state.versionsByPage[b][0]];
-    return new Date(bv.createdAt || bv.lastSeenAt).getTime() - new Date(av.createdAt || av.lastSeenAt).getTime();
+    return new Date((bv?.createdAt || bv?.lastSeenAt) || 0).getTime() - new Date((av?.createdAt || av?.lastSeenAt) || 0).getTime();
   });
 
   return pageUrls.map((pageUrl) => {
     const ids = state.versionsByPage[pageUrl];
-    const metas = ids.map((id) => state.versionIndex[id]);
+    const metas = ids.map((id) => state.versionIndex[id]).filter(Boolean);
+    if (!metas.length) return null;
     return {
       pageUrl,
       title: metas[0].title,
@@ -586,7 +587,7 @@ export function summarizePages() {
         signature: meta.signature,
       })),
     };
-  });
+  }).filter(Boolean);
 }
 
 export function distributionSummary() {
