@@ -13,7 +13,7 @@ export default function OptionsApp() {
   const manifest = chrome.runtime.getManifest();
   const [mapCount, setMapCount] = useState("-");
   const [pageCount, setPageCount] = useState("-");
-  const [locale, setLocale] = useState("en-US");
+  const [setLocale] = useState("en-US");
 
   useEffect(() => {
     const browserLang = chrome.i18n.getUILanguage() || "en";
@@ -35,7 +35,7 @@ export default function OptionsApp() {
         setLocale(effectiveLang);
       }
     });
-  }, []);
+  }, [setLocale]);
 
   const handleOpenDashboard = useCallback(() => {
     chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });

@@ -68,7 +68,6 @@ function DashboardContent() {
   const [importing, setImporting] = useState(false);
   const [activePageTabs, setActivePageTabs] = useState({});
   const [expandedDomainKeys, setExpandedDomainKeys] = useState([]);
-  const historyCardRef = useRef(null);
   const hasLoadedDashboardRef = useRef(false);
 
   const applyDashboardData = useCallback((data) => {
