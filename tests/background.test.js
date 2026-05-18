@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// Minimal valid source map used as test fixture where content validity is required
+const VALID_MAP = '{"version":3,"sources":["a.js"],"sourcesContent":["x=1;"],"mappings":"AAAA"}';
 function createChromeMock() {
   const listeners = {
     onMessage: null,
@@ -1120,7 +1122,7 @@ describe("storage compaction regressions", () => {
         id: "https://example.com::hash-a",
         siteKey: "https://example.com",
         mapHash: "hash-a",
-        content: "map-a",
+        content: VALID_MAP,
         createdAt: "2026-01-01T00:00:00.000Z",
         refCount: 1,
       },

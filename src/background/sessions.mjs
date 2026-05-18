@@ -241,7 +241,7 @@ export function isValidSourceMap(raw) {
       data.version === 3 &&
       Array.isArray(data.sources) && data.sources.length > 0 &&
       Array.isArray(data.sourcesContent) &&
-      data.sourcesContent.some((content) => content != null && content !== "")
+      data.sourcesContent.some((content) => content != null && content.trim() !== "")
     );
   } catch {
     return false;

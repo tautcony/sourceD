@@ -76,6 +76,20 @@ function cleanupErrorMessage(err) {
   return err && err.message ? err.message : String(err);
 }
 
+function hasExtractableMapContent(raw) {
+  try {
+    const data = JSON.parse(raw.replace(/^\)\]\}'/, ""));
+    return (
+      data.version === 3 &&
+      Array.isArray(data.sources) && data.sources.length > 0 &&
+      Array.isArray(data.sourcesContent) &&
+      data.sourcesContent.some((content) => content != null && content.trim() !== "")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function mergeCleanupStats(baseStats, stepStats) {
   if (!stepStats) return baseStats;
   return {
@@ -809,6 +823,10 @@ export function buildCompactedStorageState(db, metas) {
       }
 
       if (content == null) {
+        continue;
+      }
+
+      if (!hasExtractableMapContent(content)) {
         continue;
       }
 

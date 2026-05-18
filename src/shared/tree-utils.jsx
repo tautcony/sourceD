@@ -1,5 +1,5 @@
-import { Tag, Typography } from "antd";
-import { FolderOutlined, FileOutlined } from "@ant-design/icons";
+import { Button, Tag, Typography } from "antd";
+import { DownloadOutlined, FolderOutlined, FileOutlined } from "@ant-design/icons";
 import { fileSizeIEC, i18nMessage, sourceMapTreePath } from "./utils.mjs";
 
 const { Text } = Typography;
@@ -25,31 +25,53 @@ export function buildMapTree(files) {
   return root;
 }
 
-export function toAntdTreeData(node, pathPrefix = "") {
+function compactMapFolderChain(name, folder, fullPath) {
+  const subNames = Object.keys(folder.folders);
+  if (subNames.length === 1 && folder.files.length === 0) {
+    const child = subNames[0];
+    return compactMapFolderChain(`${name}/${child}`, folder.folders[child], fullPath + child + "/");
+  }
+  return { displayName: name, node: folder, path: fullPath };
+}
+
+export function toAntdTreeData(node, pathPrefix = "", { onDownloadFile } = {}) {
   const children = [];
   const folderNames = Object.keys(node.folders).sort();
   for (const name of folderNames) {
     const folder = node.folders[name];
     const folderPath = pathPrefix + name + "/";
+    const { displayName, node: compacted, path: compactedPath } = compactMapFolderChain(name, folder, folderPath);
     children.push({
-      title: name,
-      key: "folder-" + folderPath,
+      title: (
+        <span title={displayName} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {displayName}
+        </span>
+      ),
+      key: "folder-" + compactedPath,
       icon: <FolderOutlined />,
-      children: toAntdTreeData(folder, folderPath),
+      children: toAntdTreeData(compacted, compactedPath, { onDownloadFile }),
     });
   }
   const sortedFiles = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
   for (const file of sortedFiles) {
     children.push({
       title: (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
-          <Text ellipsis={{ tooltip: file.url }} style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>{file.name}</Text>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, width: "100%", minWidth: 0, maxWidth: "100%" }}>
+          <Text ellipsis={{ tooltip: file.url }} style={{ flex: 1, minWidth: 0 }}>{file.name}</Text>
           {file.refCount > 1 ? (
             <Tag color="gold" style={{ flexShrink: 0, marginInlineEnd: 0 }}>
               {i18nMessage("commonReferenceCount", [String(file.refCount)])}
             </Tag>
           ) : null}
           <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fileSizeIEC(file.size)}</Text>
+          {onDownloadFile ? (
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              style={{ flexShrink: 0, marginLeft: 2 }}
+              onClick={(e) => { e.stopPropagation(); onDownloadFile(file.url); }}
+            />
+          ) : null}
         </span>
       ),
       key: "file-" + file.url,

@@ -40,16 +40,35 @@ function buildSourceTree(sourceFiles) {
   return root;
 }
 
+/**
+ * Compact a single-child folder chain into one node.
+ * e.g. src/ → main/ → java/ (each with no files) becomes "src/main/java".
+ * Stops when a folder has multiple children or contains files.
+ */
+function compactFolderChain(name, folder, fullPath) {
+  const subNames = Object.keys(folder.folders);
+  if (subNames.length === 1 && folder.files.length === 0) {
+    const child = subNames[0];
+    return compactFolderChain(`${name}/${child}`, folder.folders[child], fullPath + child + "/");
+  }
+  return { displayName: name, node: folder, path: fullPath };
+}
+
 function toSourceTreeData(node, pathPrefix = "") {
   const children = [];
   for (const name of Object.keys(node.folders).sort()) {
     const folder = node.folders[name];
     const folderPath = pathPrefix + name + "/";
+    const { displayName, node: compacted, path: compactedPath } = compactFolderChain(name, folder, folderPath);
     children.push({
-      title: name,
-      key: "sfolder-" + folderPath,
+      title: (
+        <span title={displayName} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {displayName}
+        </span>
+      ),
+      key: "sfolder-" + compactedPath,
       icon: <FolderOutlined />,
-      children: toSourceTreeData(folder, folderPath),
+      children: toSourceTreeData(compacted, compactedPath),
       selectable: false,
     });
   }
@@ -57,7 +76,7 @@ function toSourceTreeData(node, pathPrefix = "") {
     children.push({
       title: (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", minWidth: 0, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden" }}>
-          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{file.name}</span>
+          <span title={file.name} style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{file.name}</span>
           <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fileSizeIEC(file.size)}</Text>
         </span>
       ),
@@ -72,9 +91,19 @@ function toSourceTreeData(node, pathPrefix = "") {
 
 function limitedExpandedKeys(treeData, expandAll) {
   if (expandAll) return undefined;
-  return treeData
-    .filter((item) => Array.isArray(item.children) && item.children.length > 0)
-    .map((item) => item.key);
+  const keys = [];
+  function collect(nodes) {
+    for (const node of nodes) {
+      if (!Array.isArray(node.children) || !node.children.length) continue;
+      keys.push(node.key);
+      // Follow single-child folder chains so the user sees meaningful content on first render
+      if (node.children.length === 1 && !node.children[0].isLeaf) {
+        collect(node.children);
+      }
+    }
+  }
+  collect(treeData);
+  return keys;
 }
 
 export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
@@ -182,6 +211,19 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
     setPreviewRenderKey((k) => k + 1);
   }, []);
 
+  const handleDownloadMapFile = useCallback((url) => {
+    ensureFullFiles().then((nextFiles) => {
+      const file = nextFiles.find((f) => f.url === url);
+      if (!file?.content) return;
+      const blob = new Blob([file.content], { type: "application/json" });
+      const objectUrl = URL.createObjectURL(blob);
+      chrome.downloads.download({ url: objectUrl, filename: url.split("/").pop() || "source.map" }, () => {
+        URL.revokeObjectURL(objectUrl);
+      });
+      fullFilesRef.current = null;
+    }).catch((err) => console.error("[SourceD] map file download failed:", err));
+  }, [ensureFullFiles]);
+
   const sourceTreeData = useMemo(() => {
     const srcFiles = sourceFilesRef.current;
     if (!srcFiles?.length) return [];
@@ -191,8 +233,8 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
 
   const treeData = useMemo(() => {
     if (!files?.length) return [];
-    return toAntdTreeData(buildMapTree(files));
-  }, [files]);
+    return toAntdTreeData(buildMapTree(files), "", { onDownloadFile: handleDownloadMapFile });
+  }, [files, handleDownloadMapFile]);
 
   const versionTreeExpandAll = (files?.length || 0) <= EXPAND_ALL_MAP_FILES_LIMIT;
   const versionTreeExpandedKeys = useMemo(
@@ -256,6 +298,7 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
       <Tree
         showIcon
         blockNode
+        indent={16}
         defaultExpandAll={versionTreeExpandAll}
         defaultExpandedKeys={versionTreeExpandedKeys}
         treeData={treeData}
@@ -266,7 +309,7 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
         open={previewOpen}
         onClose={handleClosePreview}
         destroyOnClose
-        size="70vw"
+        width="70vw"
         styles={{ body: { padding: 0, display: "flex", flexDirection: "column", overflow: "hidden" } }}
       >
         {previewLoading ? (
@@ -279,6 +322,7 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
               <Tree
                 showIcon
                 blockNode
+                indent={16}
                 defaultExpandAll={sourceTreeExpandAll}
                 defaultExpandedKeys={sourceTreeExpandedKeys}
                 treeData={sourceTreeData}
@@ -286,10 +330,10 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
                 style={{ fontSize: 12, width: "100%", minWidth: 0, overflow: "hidden" }}
               />
             </div>
-            <div style={{ flex: 1, overflow: "auto", padding: 0 }}>
+            <div style={{ flex: 1, overflow: "hidden", padding: 0, display: "flex", flexDirection: "column" }}>
               {selectedFile ? (
-                <Flex vertical gap={0}>
-                  <Flex justify="space-between" align="center" style={{ padding: "8px 12px", borderBottom: "1px solid #f0f0f0", background: "#fafafa" }}>
+                <Flex vertical gap={0} style={{ height: "100%", overflow: "hidden" }}>
+                  <Flex justify="space-between" align="center" style={{ padding: "8px 12px", borderBottom: "1px solid #f0f0f0", background: "#fafafa", flexShrink: 0 }}>
                     <Text strong ellipsis={{ tooltip: selectedFile.path }} style={{ minWidth: 0, flex: 1 }}>
                       {selectedFile.path}
                     </Text>
@@ -297,7 +341,9 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
                       {fileSizeIEC(selectedFile.size)}
                     </Text>
                   </Flex>
-                  <CodePreview code={selectedFile.content} filename={selectedFile.name} />
+                  <div style={{ flex: 1, overflow: "hidden" }}>
+                    <CodePreview code={selectedFile.content} filename={selectedFile.name} />
+                  </div>
                 </Flex>
               ) : (
                 <Empty description={i18nMessage("dashboardPreviewEmpty")} style={{ marginTop: 80 }} />

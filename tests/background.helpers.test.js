@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// Minimal valid source maps used as test fixtures where content validity is required
+const VALID_MAP = '{"version":3,"sources":["a.js"],"sourcesContent":["x=1;"],"mappings":"AAAA"}';
+const VALID_MAP_B = '{"version":3,"sources":["b.js"],"sourcesContent":["y=2;"],"mappings":"AAAA"}';
 function flushPromises() {
   return Promise.resolve().then(() => Promise.resolve());
 }
@@ -427,6 +430,10 @@ describe("background session helpers", () => {
     expect(sessions.isValidSourceMap(")]}'{\"version\":3,\"sources\":[\"a\"],\"sourcesContent\":[\"code\"]}")).toBe(true);
     expect(sessions.isValidSourceMap("{\"version\":3,\"sources\":[],\"sourcesContent\":[]}")).toBe(false);
     expect(sessions.isValidSourceMap("nope")).toBe(false);
+    // whitespace-only content should be treated as empty (e.g., Closure Compiler synthetic maps)
+    expect(sessions.isValidSourceMap("{\"version\":3,\"sources\":[\"\"],\"sourcesContent\":[\" \"]}")).toBe(false);
+    expect(sessions.isValidSourceMap("{\"version\":3,\"sources\":[\"a\"],\"sourcesContent\":[\"  \"]}")).toBe(false);
+    expect(sessions.isValidSourceMap("{\"version\":3,\"sources\":[\"a\"],\"sourcesContent\":[\"\n\"]}")).toBe(false);
     vi.useRealTimers();
   });
 
@@ -1043,7 +1050,7 @@ describe("background storage helpers", () => {
             id: "https://example.com::oldhash",
             siteKey: "https://example.com",
             mapHash: "oldhash",
-            content: "legacy-content",
+            content: VALID_MAP,
             createdAt: "2026-01-01T00:00:00.000Z",
           }] : []),
           get: (key) => createRequest({
@@ -1075,7 +1082,7 @@ describe("background storage helpers", () => {
       expect.objectContaining({
         id: "legacy",
         signature: expect.stringMatching(/^legacy\.map#[0-9a-f]{64}$/),
-        byteSize: "legacy-content".length,
+        byteSize: VALID_MAP.length,
         mapUrls: ["legacy.map"],
       }),
     ]);
@@ -1130,9 +1137,9 @@ describe("background storage helpers", () => {
       byteSize: 5,
       signature: "legacy-subset",
     });
-    db.stores.versionMaps.set("superset::a.map", "map-a");
-    db.stores.versionMaps.set("superset::b.map", "map-b");
-    db.stores.versionMaps.set("subset::a.map", "map-a");
+    db.stores.versionMaps.set("superset::a.map", VALID_MAP);
+    db.stores.versionMaps.set("superset::b.map", VALID_MAP);
+    db.stores.versionMaps.set("subset::a.map", VALID_MAP);
 
     shared.state.dbPromise = null;
     shared.state.storageReadyPromise = null;
@@ -1223,8 +1230,8 @@ describe("background storage helpers", () => {
       id: "blob1",
       siteKey: "https://example.com",
       mapHash: "h1",
-      byteSize: 7,
-      content: "old-map",
+      byteSize: VALID_MAP.length,
+      content: VALID_MAP,
       createdAt: "2026-01-01T00:00:00.000Z",
       refCount: 2,
     });
@@ -1269,11 +1276,11 @@ describe("background storage helpers", () => {
             id: "blob-existing",
             siteKey: "https://example.com",
             mapHash: "hash-existing",
-            content: "record-content",
+            content: VALID_MAP_B,
             createdAt: "2026-01-01T00:00:00.000Z",
           }] : []),
           get: (key) => createRequest({
-            "keep::raw.map": "raw-content",
+            "keep::raw.map": VALID_MAP,
             "keep::record.map": { mapHash: "hash-existing", blobId: "blob-existing" },
             "keep::missing.map": { mapHash: "missing-hash", blobId: "blob-missing" },
           }[key]),

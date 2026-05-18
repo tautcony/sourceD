@@ -1,50 +1,61 @@
-import { useEffect, useRef } from "react";
-import hljs from "highlight.js/lib/core";
-import javascript from "highlight.js/lib/languages/javascript";
-import typescript from "highlight.js/lib/languages/typescript";
-import css from "highlight.js/lib/languages/css";
-import xml from "highlight.js/lib/languages/xml";
-import json from "highlight.js/lib/languages/json";
-import "highlight.js/styles/github.css";
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
+import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js";
+import "monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js";
+import "monaco-editor/esm/vs/basic-languages/css/css.contribution.js";
+import "monaco-editor/esm/vs/basic-languages/less/less.contribution.js";
+import "monaco-editor/esm/vs/basic-languages/html/html.contribution.js";
+import "monaco-editor/esm/vs/basic-languages/xml/xml.contribution.js";
+import Editor, { loader } from "@monaco-editor/react";
 
-hljs.registerLanguage("javascript", javascript);
-hljs.registerLanguage("typescript", typescript);
-hljs.registerLanguage("css", css);
-hljs.registerLanguage("xml", xml);
-hljs.registerLanguage("json", json);
-
-const MAX_HIGHLIGHT_CHARS = 200000;
-
-function guessLanguage(filename) {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  const map = { js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript", ts: "typescript", tsx: "typescript", css: "css", scss: "css", less: "css", html: "xml", htm: "xml", svg: "xml", vue: "xml", json: "json" };
-  return map[ext] || null;
+// Read-only code viewer doesn't require language workers (no IntelliSense/validation).
+// A no-op worker suppresses console errors from Monaco's worker bootstrap.
+/* c8 ignore next 5 */
+if (!globalThis.MonacoEnvironment) {
+  globalThis.MonacoEnvironment = {
+    getWorker() {
+      return new Worker(URL.createObjectURL(new Blob([""], { type: "text/javascript" })));
+    },
+  };
 }
 
-export default function CodePreview({ code, filename }) {
-  const codeRef = useRef(null);
-  useEffect(() => {
-    /* c8 ignore next */
-    if (!codeRef.current || !code) return;
-    const currentCode = codeRef.current;
-    currentCode.textContent = code;
-    /* c8 ignore next 2 */
-    const lang = guessLanguage(filename || "");
-    if (!lang || code.length > MAX_HIGHLIGHT_CHARS) return;
-    const timer = setTimeout(() => {
-      try {
-        const result = hljs.highlight(code, { language: lang });
-        currentCode.innerHTML = result.value;
-      } catch {
-        currentCode.textContent = code;
-      }
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [code, filename]);
+loader.config({ monaco });
 
+const LANGUAGE_MAP = {
+  js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript",
+  ts: "typescript", tsx: "typescript",
+  css: "css", scss: "css", less: "less",
+  html: "html", htm: "html",
+  svg: "xml", vue: "html",
+};
+
+function guessLanguage(filename) {
+  const ext = filename?.split(".").pop()?.toLowerCase();
+  return LANGUAGE_MAP[ext] || "plaintext";
+}
+
+const EDITOR_OPTIONS = {
+  readOnly: true,
+  minimap: { enabled: false },
+  scrollBeyondLastLine: false,
+  wordWrap: "off",
+  fontSize: 12,
+  lineNumbers: "on",
+  folding: true,
+  renderLineHighlight: "line",
+  automaticLayout: true,
+  contextmenu: false,
+  scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+};
+
+export default function CodePreview({ code, filename }) {
+  const language = guessLanguage(filename);
   return (
-    <pre style={{ margin: 0, padding: 12, overflow: "auto", fontSize: 12, lineHeight: 1.5, background: "#f6f8fa", borderRadius: 4, minHeight: 200, maxHeight: "calc(100vh - 200px)" }}>
-      <code ref={codeRef} style={{ fontFamily: "'Menlo', 'Consolas', 'Courier New', monospace", whiteSpace: "pre" }} />
-    </pre>
+    <Editor
+      height="100%"
+      language={language}
+      value={code ?? ""}
+      options={EDITOR_OPTIONS}
+      theme="vs"
+    />
   );
 }

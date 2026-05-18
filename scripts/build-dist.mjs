@@ -37,6 +37,8 @@ await Promise.all([
     ...commonOptions,
     entryPoints: ["src/dashboard/entry.jsx"],
     outfile: `${BUNDLES_DIR}/dashboard.js`,
+    // Monaco editor uses codicon.ttf for UI icons
+    loader: { ".ttf": "dataurl" },
   }),
   build({
     ...commonOptions,

@@ -1,5 +1,9 @@
 import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
+import path from "node:path";
+
+const monacoMock = path.resolve("tests/__mocks__/monaco-editor.js");
+const monacoReactMock = path.resolve("tests/__mocks__/monaco-react.jsx");
 
 export default defineConfig({
   test: {
@@ -29,6 +33,12 @@ export default defineConfig({
           },
         },
         esbuild: { jsx: "automatic" },
+        resolve: {
+          alias: [
+            { find: "@monaco-editor/react", replacement: monacoReactMock },
+            { find: /^monaco-editor(\/.*)?$/, replacement: monacoMock },
+          ],
+        },
       },
     ],
     coverage: {
@@ -38,3 +48,4 @@ export default defineConfig({
     },
   },
 });
+

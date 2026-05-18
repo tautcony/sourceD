@@ -164,7 +164,7 @@ export function extractSourceFiles(files) {
       if (src === "") src = "unnamed";
       if (!isUserSourceFile(src)) return;
       var content = parsed.sourcesContent[index];
-      if (!content) return;
+      if (!content || !content.trim()) return;
       var dest = normalizeSourcePath(src);
       /* c8 ignore next */
       if (!dest) return;

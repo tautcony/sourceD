@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { App as AntdApp } from "antd";
 import DashboardApp from "../src/dashboard/App.jsx";
-import hljs from "highlight.js/lib/core";
 import * as popupSourceMapHelpers from "../src/popup/sourcemap.mjs";
 
 vi.mock("../src/popup/sourcemap.mjs", async (importOriginal) => {
@@ -837,26 +836,6 @@ describe("DashboardApp", () => {
 
     await waitFor(() => {
       expect(document.querySelector("pre code").textContent).toContain("plain text content");
-    });
-  });
-
-  it("falls back to plain text preview when syntax highlight throws", async () => {
-    mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
-    vi.spyOn(hljs, "highlight").mockImplementation(() => {
-      throw new Error("highlight-fail");
-    });
-
-    render(<DashboardApp />);
-    await openVersionPanel();
-
-    await waitFor(() => screen.getByText("Preview sources"));
-    fireEvent.click(screen.getByText("Preview sources").closest("button"));
-    await waitFor(() => screen.getByText("Source Preview"));
-    await waitFor(() => screen.getByText((content) => content.includes("index.js")));
-    fireEvent.click(screen.getByText((content) => content.includes("index.js")));
-
-    await waitFor(() => {
-      expect(document.querySelector("pre code").textContent).toContain("console.log");
     });
   });
 
