@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { App as AntdApp } from "antd";
 import DashboardApp from "../src/dashboard/App.jsx";
+import VersionPanel, { versionFilesCache } from "../src/dashboard/VersionPanel.jsx";
 import * as popupSourceMapHelpers from "../src/popup/sourcemap.mjs";
 
 vi.mock("../src/popup/sourcemap.mjs", async (importOriginal) => {
@@ -120,6 +121,7 @@ class MockFileReader {
 beforeEach(() => {
   globalThis.FileReader = MockFileReader;
   chrome.downloads.download = vi.fn((opts, cb) => { if (cb) cb(1); });
+  versionFilesCache.clear();
   messageApi.success.mockReset();
   messageApi.info.mockReset();
   messageApi.error.mockReset();
@@ -388,6 +390,51 @@ describe("DashboardApp", () => {
     expect(values).toContain("5"); // 5 versions
   });
 
+  it("logs raw and stored dashboard storage totals to console", async () => {
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+    mockDashboardData({
+      pages: [{
+        pageUrl: "https://example.com/app",
+        title: "Example",
+        siteKey: "https://example.com",
+        versions: [{
+          id: "v1",
+          label: "v1",
+          createdAt: "2026-01-01T00:00:00Z",
+          lastSeenAt: "2026-01-01T00:00:00Z",
+          mapCount: 1,
+          byteSize: 4096,
+          rawByteSize: 4096,
+          storedByteSize: 1024,
+        }],
+      }],
+      settings: {
+        retentionDays: 30,
+        maxVersionsPerPage: 10,
+        autoCleanup: true,
+        detectionEnabled: true,
+        ignoredDomains: [],
+        fetchDelayMs: 300,
+        fetchTimeoutMs: 30000,
+        maxMapBytes: 52428800,
+        sizeDisplayMode: "compressed",
+      },
+      totalVersions: 1,
+      totalStorageBytes: 1024,
+    });
+
+    render(<DashboardApp />);
+    await screen.findByText("1.00 KiB");
+
+    expect(consoleInfo).toHaveBeenCalledWith("[SourceD] dashboard storage totals:", {
+      sizeDisplayMode: "compressed",
+      rawByteSize: 4096,
+      storedByteSize: 1024,
+      displayedByteSize: 1024,
+    });
+    consoleInfo.mockRestore();
+  });
+
   it("renders domain summary text", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024 });
     render(<DashboardApp />);
@@ -581,6 +628,46 @@ describe("DashboardApp", () => {
     expect(screen.getByText("Download version")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Delete" }).length).toBeGreaterThan(0);
   }, 15000);
+
+  it("refetches version files when sizeMode changes for the same version", async () => {
+    let currentMode = "uncompressed";
+    chrome.runtime.sendMessage = vi.fn((msg, cb) => {
+      if (msg.action === "getVersionFiles") {
+        cb({
+          ok: true,
+          files: [{
+            url: "https://example.com/app.js.map",
+            byteSize: currentMode === "compressed" ? 1024 : 2048,
+            refCount: 1,
+          }],
+        });
+        return;
+      }
+      cb({ ok: true });
+    });
+
+    const version = {
+      id: "v1",
+      byteSize: 2048,
+    };
+    const { rerender } = render(<VersionPanel version={version} sizeMode="uncompressed" />);
+    await waitFor(() => {
+      const fileListRequests = chrome.runtime.sendMessage.mock.calls.filter(
+        ([msg]) => msg?.action === "getVersionFiles" && msg?.includeContent === false,
+      );
+      expect(fileListRequests).toHaveLength(1);
+    });
+
+    currentMode = "compressed";
+    rerender(<VersionPanel version={{ ...version, byteSize: 1024 }} sizeMode="compressed" />);
+
+    await waitFor(() => {
+      const fileListRequests = chrome.runtime.sendMessage.mock.calls.filter(
+        ([msg]) => msg?.action === "getVersionFiles" && msg?.includeContent === false,
+      );
+      expect(fileListRequests).toHaveLength(2);
+    });
+  });
 
   it("shows empty version files when no files returned", async () => {
     mockDashboardData({ pages: mockPages, totalVersions: 1, totalStorageBytes: 1024, versionFiles: [] });

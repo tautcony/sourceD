@@ -722,7 +722,6 @@ export async function importSourceMapsForPage(payload) {
 
   await persistVersionState(meta, refs, blobs, null);
   ensurePageBucket(pageUrl).unshift(versionId);
-  state.versionIndex[versionId] = meta;
   sortPageVersions(pageUrl);
   if (currentSettings().autoCleanup) await prunePageHistory(pageUrl);
   refreshBadgeForActiveTab();
@@ -930,6 +929,7 @@ export function buildCompactedStorageState(db, metas) {
       });
 
       const finalizedMeta = rebuildVersionMetaFromRefs(meta, finalizedRefs, meta.siteKey || pageSiteKey(meta.pageUrl));
+      desiredRefsByVersion[id] = finalizedRefs;
       desiredVersionMap[id] = finalizedMeta;
     });
 

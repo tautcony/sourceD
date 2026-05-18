@@ -14,12 +14,17 @@ const VERSION_FILES_CACHE_MAX = 5;
 const EXPAND_ALL_MAP_FILES_LIMIT = 50;
 const EXPAND_ALL_SOURCE_FILES_LIMIT = 200;
 
-function cacheVersionFiles(versionId, data) {
+function versionFilesCacheKey(versionId, sizeMode) {
+  return `${versionId}::${sizeMode === "compressed" ? "compressed" : "uncompressed"}`;
+}
+
+function cacheVersionFiles(versionId, sizeMode, data) {
+  const cacheKey = versionFilesCacheKey(versionId, sizeMode);
   if (versionFilesCache.size >= VERSION_FILES_CACHE_MAX) {
     const firstKey = versionFilesCache.keys().next().value;
     versionFilesCache.delete(firstKey);
   }
-  versionFilesCache.set(versionId, data);
+  versionFilesCache.set(cacheKey, data);
 }
 
 function buildSourceTree(sourceFiles) {
@@ -118,9 +123,10 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
   const sourceFilesRef = useRef(null);
 
   useEffect(() => {
-    if (versionFilesCache.has(version.id)) {
+    const cacheKey = versionFilesCacheKey(version.id, sizeMode);
+    if (versionFilesCache.has(cacheKey)) {
       setLoadingFiles(false);
-      setFiles(versionFilesCache.get(version.id));
+      setFiles(versionFilesCache.get(cacheKey));
       return;
     }
     chrome.runtime.sendMessage({ action: "getVersionFiles", versionId: version.id, includeContent: false }, (resp) => {
@@ -138,7 +144,7 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
         return;
       }
       const nextFiles = resp.files || [];
-      cacheVersionFiles(version.id, nextFiles);
+      cacheVersionFiles(version.id, sizeMode, nextFiles);
       setLoadingFiles(false);
       setFiles(nextFiles);
     });

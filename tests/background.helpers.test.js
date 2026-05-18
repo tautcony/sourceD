@@ -944,6 +944,19 @@ describe("background storage helpers", () => {
     await expect(dbModule.loadBlobContentsRaw(db, [ref.blobId])).resolves.toEqual({
       [ref.blobId]: largeContent,
     });
+
+    const versionMeta = shared.state.versionIndex[created.versionId];
+    expect(versionMeta.byteSize).toBe(blob.contentByteSize);
+    expect(versionMeta.storedByteSize).toBe(blob.storedByteSize);
+
+    shared.state.settings = {
+      retentionDays: 30,
+      maxVersionsPerPage: 10,
+      autoCleanup: false,
+      detectionEnabled: true,
+      sizeDisplayMode: "compressed",
+    };
+    expect(storage.totalStorageBytes()).toBe(blob.storedByteSize);
   });
 
   it("covers index removal and compaction stats", async () => {
@@ -1171,6 +1184,65 @@ describe("background storage helpers", () => {
         mapCount: 2,
       }),
     ]);
+  });
+
+  it("compaction rechecks storedByteSize from compressed blobs", async () => {
+    const storage = await import("../src/background/storage.mjs");
+    const shared = await import("../src/background/shared.mjs");
+    const db = createInMemoryDb();
+
+    chrome.tabs.query = vi.fn((_opts, cb) => cb([]));
+    chrome.action = { setBadgeText: vi.fn() };
+    globalThis.indexedDB = {
+      open: vi.fn(() => {
+        const req = { result: db, error: null, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+        queueMicrotask(() => {
+          req.onupgradeneeded?.();
+          req.onsuccess?.();
+        });
+        return req;
+      }),
+    };
+
+    shared.state.dbPromise = null;
+    shared.state.storageReadyPromise = null;
+    shared.state.versionIndex = {};
+    shared.state.versionsByPage = {};
+    shared.state.blobIndex = {};
+    await storage.ensureStorageReady();
+
+    const largeContent = JSON.stringify({
+      version: 3,
+      sources: ["src/app.js"],
+      sourcesContent: [`const repeated = "${"x".repeat(4096)}";`],
+    });
+
+    const created = await storage.importSourceMapsForPage({
+      pageUrl: "https://example.com/needs-recheck",
+      files: [{ mapUrl: "big.map", content: largeContent }],
+    });
+
+    const versionMeta = db.stores.pageVersions.get(created.versionId);
+    const ref = db.stores.versionMaps.get(`${created.versionId}::big.map`);
+    const blob = db.stores.mapBlobs.get(ref.blobId);
+
+    expect(blob.storedByteSize).toBeLessThan(blob.contentByteSize);
+
+    db.stores.pageVersions.set(created.versionId, {
+      ...versionMeta,
+      storedByteSize: versionMeta.byteSize,
+    });
+    shared.state.versionIndex[created.versionId] = {
+      ...shared.state.versionIndex[created.versionId],
+      storedByteSize: shared.state.versionIndex[created.versionId].byteSize,
+    };
+
+    const compacted = await storage.compactStorageData();
+    const repairedMeta = shared.state.versionIndex[created.versionId];
+
+    expect(compacted.stats.upgradedVersions).toBeGreaterThan(0);
+    expect(repairedMeta.byteSize).toBe(blob.contentByteSize);
+    expect(repairedMeta.storedByteSize).toBe(blob.storedByteSize);
   });
 
   it("covers persist/delete refcount paths, compaction builder branches, and session clearing", async () => {

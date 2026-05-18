@@ -43,6 +43,18 @@ const defaultDashboardSettings = {
   uiLanguage: "auto",
 };
 
+function dashboardStorageTotals(data) {
+  const pages = Array.isArray(data?.pages) ? data.pages : [];
+  return pages.reduce((totals, page) => {
+    const versions = Array.isArray(page?.versions) ? page.versions : [];
+    versions.forEach((version) => {
+      totals.rawByteSize += Number(version?.rawByteSize ?? version?.byteSize) || 0;
+      totals.storedByteSize += Number(version?.storedByteSize ?? version?.byteSize) || 0;
+    });
+    return totals;
+  }, { rawByteSize: 0, storedByteSize: 0 });
+}
+
 function DashboardContent() {
   const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(true);
@@ -81,9 +93,16 @@ function DashboardContent() {
       // Set locale synchronously before state updates so that i18nMessage()
       // calls during the triggered re-render already see the correct locale.
       const s = data?.settings || defaultDashboardSettings;
+      const totals = dashboardStorageTotals(data);
       const lang = s.uiLanguage;
       const zh = lang === "zh-CN" || (lang !== "en-US" && /^zh\b/i.test(chrome.i18n.getUILanguage() || "en"));
       setI18nLocale(zh ? zhCNMessages : enMessages);
+      console.info("[SourceD] dashboard storage totals:", {
+        sizeDisplayMode: s.sizeDisplayMode || "uncompressed",
+        rawByteSize: totals.rawByteSize,
+        storedByteSize: totals.storedByteSize,
+        displayedByteSize: Number(data?.totalStorageBytes) || 0,
+      });
       setLoading(false);
       setRefreshing(false);
       applyDashboardData(data);
