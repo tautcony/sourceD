@@ -77,7 +77,7 @@ function limitedExpandedKeys(treeData, expandAll) {
     .map((item) => item.key);
 }
 
-export default function VersionPanel({ version }) {
+export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
   const [files, setFiles] = useState(null);
   const [loadingFiles, setLoadingFiles] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -113,7 +113,7 @@ export default function VersionPanel({ version }) {
       setLoadingFiles(false);
       setFiles(nextFiles);
     });
-  }, [version.id]);
+  }, [version.id, sizeMode]);
 
   useEffect(() => {
     fullFilesRef.current = null;

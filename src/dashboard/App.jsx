@@ -330,7 +330,7 @@ function DashboardContent() {
                         </Flex>
                       </Flex>
                     ),
-                    children: <VersionPanel version={version} />,
+                    children: <VersionPanel version={version} sizeMode={settings?.sizeDisplayMode ?? "uncompressed"} />,
                   }))}
                 />
               </Flex>
@@ -339,7 +339,7 @@ function DashboardContent() {
         />
       ),
     }));
-  }, [activePageTabs, groups, handleDeletePage, handleDeleteSite, handleDeleteVersion, handlePageTabChange, effectiveLocale]);
+  }, [activePageTabs, groups, handleDeletePage, handleDeleteSite, handleDeleteVersion, handlePageTabChange, effectiveLocale, settings]);
 
   const handleLegendClick = useCallback((siteKey) => {
     setExpandedDomainKeys((prev) => {

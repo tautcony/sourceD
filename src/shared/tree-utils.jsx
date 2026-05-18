@@ -18,7 +18,7 @@ export function buildMapTree(files) {
     node.files.push({
       name: parts[parts.length - 1],
       url: file.url,
-      size: Number(file.byteSize) || file.content.length,
+      size: Number(file.byteSize) || (file.content != null ? file.content.length : 0),
       refCount: Number(file.refCount) || 1,
     });
   });
