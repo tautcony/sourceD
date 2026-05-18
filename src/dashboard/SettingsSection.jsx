@@ -36,7 +36,7 @@ export default function SettingsSection({ settings, onReload }) {
         detectionEnabled: values.detectionEnabled !== false,
         ignoredDomains: normalizeDomainFilterList(values.ignoredDomains),
         sizeDisplayMode: values.sizeDisplayMode === "compressed" ? "compressed" : "uncompressed",
-        fetchDelayMs: Number(values.fetchDelayMs) || 300,
+        fetchDelayMs: Number(values.fetchDelayMs ?? 300),
         fetchTimeoutMs: Number(values.fetchTimeoutMs) || 30_000,
         maxMapBytes: Number(values.maxMapBytes) || 50 * 1024 * 1024,
         uiLanguage: values.uiLanguage || "auto",

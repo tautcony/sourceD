@@ -41,10 +41,10 @@ export function createSourceMapFetcher(state, getSettings) {
     const pending = { callbacks: [callback] };
     state.pendingSourceMapFetches.set(jsUrl, pending);
 
-    const settings = getSettings ? getSettings() : {};
-    const fetchDelayMs = settings.fetchDelayMs ?? DEFAULT_FETCH_DELAY_MS;
-    const fetchTimeoutMs = settings.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
-    const maxMapBytes = settings.maxMapBytes ?? DEFAULT_MAX_MAP_BYTES;
+    // fetchDelayMs is read now to determine the setTimeout duration itself.
+    // fetchTimeoutMs and maxMapBytes are read inside the callback so that any
+    // settings change made during the delay window is picked up at fetch time.
+    const fetchDelayMs = (getSettings ? getSettings() : {}).fetchDelayMs ?? DEFAULT_FETCH_DELAY_MS;
     const fanOut = (mapUrl, content) => {
       pending.callbacks.forEach((cb) => {
         cb(mapUrl, content);
@@ -52,6 +52,9 @@ export function createSourceMapFetcher(state, getSettings) {
     };
 
     setTimeout(() => {
+      const innerSettings = getSettings ? getSettings() : {};
+      const fetchTimeoutMs = innerSettings.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
+      const maxMapBytes = innerSettings.maxMapBytes ?? DEFAULT_MAX_MAP_BYTES;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         controller.abort();

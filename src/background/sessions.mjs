@@ -100,7 +100,9 @@ export function upsertSessionVersion(session) {
       }
     }
 
-    const updateExistingVersionMeta = (versionId, keepOwned) => {
+    // updateExistingVersionMeta is only called for non-owned sessions (owned
+    // sessions are handled in the branch below), so keepOwned is always false.
+    const updateExistingVersionMeta = (versionId) => {
       const previousMeta = state.versionIndex[versionId];
       if (!previousMeta) return;
       const nextMeta = Object.assign({}, previousMeta, {
@@ -113,23 +115,17 @@ export function upsertSessionVersion(session) {
         .then(() => sortPageVersions(session.pageUrl))
         .then(() => {
           session.versionId = versionId;
-          session.versionOwned = keepOwned;
+          session.versionOwned = false;
           session.signature = nextMeta.signature;
           refreshBadgeForTab(session.tabId, session.pageUrl);
           broadcastSummary();
         });
     };
 
-    const { exactId, supersetId } = findBestVersionMatch(session.pageUrl, artifacts.signature);
-
-    if (exactId) {
-      return updateExistingVersionMeta(exactId, session.versionOwned && session.versionId === exactId);
-    }
-
-    if (supersetId) {
-      return updateExistingVersionMeta(supersetId, session.versionOwned && session.versionId === supersetId);
-    }
-
+    // Owned-session branch runs before findBestVersionMatch so that a session
+    // which owns a version always persists its own artifacts first. Placing
+    // findBestVersionMatch before this branch allowed an unrelated version's
+    // signature match to hijack ownership and skip artifact persistence.
     if (session.versionId && session.versionOwned) {
       const previousMeta = state.versionIndex[session.versionId];
       const updatedMeta = buildMetaForSession(session, artifacts, session.versionId);
@@ -146,27 +142,32 @@ export function upsertSessionVersion(session) {
         });
     }
 
-    const matchingId = ensurePageBucket(session.pageUrl).find((id) => {
-      return state.versionIndex[id] && state.versionIndex[id].signature === artifacts.signature;
-    });
+    // Non-owned session: findBestVersionMatch handles both exact-signature and
+    // superset matches across all stored versions for this page.
+    //
+    // Archived — pre-findBestVersionMatch fallback (superseded, no longer used):
+    // A direct equality loop over ensurePageBucket() used to run here as a
+    // fallback for non-owned sessions that matched an existing version by
+    // signature. It called persistVersionState() to refresh blob ref counts.
+    // findBestVersionMatch covers the same predicate, making the loop unreachable
+    // dead code. The loop has been removed; touchVersionMeta() is now sufficient
+    // for non-owned matches since compaction recounts live refs independently.
+    //
+    //   const matchingId = ensurePageBucket(session.pageUrl).find((id) =>
+    //     state.versionIndex[id] &&
+    //     state.versionIndex[id].signature === artifacts.signature
+    //   );
+    //   if (matchingId) {
+    //     return persistVersionState(nextMeta, artifacts.refs, artifacts.blobs, previousMeta) ...
+    //   }
+    const { exactId, supersetId } = findBestVersionMatch(session.pageUrl, artifacts.signature);
 
-    if (matchingId) {
-      const previousMeta = state.versionIndex[matchingId];
-      const nextMeta = Object.assign({}, previousMeta, {
-        title: session.title,
-        lastSeenAt: new Date().toISOString(),
-        tabId: session.tabId,
-      });
+    if (exactId) {
+      return updateExistingVersionMeta(exactId);
+    }
 
-      return persistVersionState(nextMeta, artifacts.refs, artifacts.blobs, previousMeta)
-        .then(() => sortPageVersions(session.pageUrl))
-        .then(() => {
-          session.versionId = matchingId;
-          session.versionOwned = false;
-          session.signature = artifacts.signature;
-          refreshBadgeForTab(session.tabId, session.pageUrl);
-          broadcastSummary();
-        });
+    if (supersetId) {
+      return updateExistingVersionMeta(supersetId);
     }
 
     const newId = `${session.pageUrl}::${Date.now()}::${Math.random().toString(36).slice(2, 8)}`;

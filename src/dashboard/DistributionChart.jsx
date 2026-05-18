@@ -29,6 +29,19 @@ function polarToCartesian(cx, cy, r, deg) {
 }
 
 function slicePath(cx, cy, r, startDeg, endDeg) {
+  if (endDeg - startDeg >= 360) {
+    // A 360° arc has identical start and end points, making a single arc command
+    // degenerate (SVG ignores it). Split into two 180° arcs instead.
+    const top = polarToCartesian(cx, cy, r, startDeg);
+    const bottom = polarToCartesian(cx, cy, r, startDeg + 180);
+    return [
+      `M ${cx} ${cy}`,
+      `L ${top.x} ${top.y}`,
+      `A ${r} ${r} 0 1 1 ${bottom.x} ${bottom.y}`,
+      `A ${r} ${r} 0 1 1 ${top.x} ${top.y}`,
+      "Z",
+    ].join(" ");
+  }
   const start = polarToCartesian(cx, cy, r, startDeg);
   const end = polarToCartesian(cx, cy, r, endDeg);
   const largeArc = endDeg - startDeg > 180 ? 1 : 0;
@@ -36,6 +49,10 @@ function slicePath(cx, cy, r, startDeg, endDeg) {
 }
 
 function sliceOffset(r, startDeg, endDeg) {
+  if (endDeg - startDeg >= 360) {
+    // Full circle has no meaningful outward direction; skip translation.
+    return { dx: 0, dy: 0 };
+  }
   const midDeg = (startDeg + endDeg) / 2;
   const rad = (midDeg - 90) * Math.PI / 180;
   const distance = r * 0.06;
