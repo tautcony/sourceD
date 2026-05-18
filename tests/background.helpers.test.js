@@ -613,6 +613,7 @@ describe("background storage helpers", () => {
       ignoredDomains: [],
       fetchDelayMs: 300,
       fetchTimeoutMs: 30_000,
+      fetchConcurrency: 6,
       maxMapBytes: 50 * 1024 * 1024,
       uiLanguage: "auto",
     });

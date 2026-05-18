@@ -120,6 +120,18 @@ function DashboardContent() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const port = chrome.runtime.connect({ name: "popup" });
+    port.onMessage.addListener((msg) => {
+      if (msg.type === "summary") {
+        applyDashboardData(msg);
+      }
+    });
+    return () => {
+      try { port.disconnect(); } catch { /* ignore disconnected port */ }
+    };
+  }, [applyDashboardData]);
+
   const effectiveLocale = useMemo(() => uiLocale(settings), [settings]);
 
   const uiLang = settings?.uiLanguage;

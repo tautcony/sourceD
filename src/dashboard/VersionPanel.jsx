@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Button, Space, Typography, Tree, Empty, Spin, Flex, Drawer } from "antd";
+import { Button, Space, Typography, Tree, Empty, Spin, Flex, Drawer, Alert } from "antd";
 import { DownloadOutlined, EyeOutlined, FolderOutlined, FileTextOutlined } from "@ant-design/icons";
 import { fileSizeIEC, i18nMessage } from "../shared/utils.mjs";
 import { buildMapTree, toAntdTreeData } from "../shared/tree-utils.jsx";
@@ -24,7 +24,7 @@ function cacheVersionFiles(versionId, sizeMode, data) {
     const firstKey = versionFilesCache.keys().next().value;
     versionFilesCache.delete(firstKey);
   }
-  versionFilesCache.set(cacheKey, data);
+  versionFilesCache.set(cacheKey, { files: data.files, failedMapUrls: data.failedMapUrls || [] });
 }
 
 function buildSourceTree(sourceFiles) {
@@ -114,6 +114,8 @@ function limitedExpandedKeys(treeData, expandAll) {
 export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
   const [files, setFiles] = useState(null);
   const [loadingFiles, setLoadingFiles] = useState(true);
+  const [failedMapUrls, setFailedMapUrls] = useState([]);
+  const [retryingUrls, setRetryingUrls] = useState(new Set());
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -126,6 +128,7 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
     let cancelled = false;
     setLoadingFiles(true);
     setFiles(null);
+    setFailedMapUrls([]);
     setPreviewOpen(false);
     setSelectedFile(null);
     fullFilesRef.current = null;
@@ -134,8 +137,10 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
     const cacheKey = versionFilesCacheKey(version.id, sizeMode);
     if (versionFilesCache.has(cacheKey)) {
       if (!cancelled) {
+        const cached = versionFilesCache.get(cacheKey);
         setLoadingFiles(false);
-        setFiles(versionFilesCache.get(cacheKey));
+        setFiles(cached.files);
+        setFailedMapUrls(cached.failedMapUrls);
       }
       return () => { cancelled = true; };
     }
@@ -155,12 +160,14 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
         return;
       }
       const nextFiles = resp.files || [];
-      cacheVersionFiles(version.id, sizeMode, nextFiles);
+      const nextFailed = resp.failedMapUrls || [];
+      cacheVersionFiles(version.id, sizeMode, { files: nextFiles, failedMapUrls: nextFailed });
       setLoadingFiles(false);
       setFiles(nextFiles);
+      setFailedMapUrls(nextFailed);
     });
     return () => { cancelled = true; };
-  }, [version.id, sizeMode]);
+  }, [version.id, version.mapCount, sizeMode]);
 
   useEffect(() => {
     fullFilesRef.current = null;
@@ -229,6 +236,28 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
     setPreviewRenderKey((k) => k + 1);
   }, []);
 
+  const handleRetryFetch = useCallback((mapUrl) => {
+    setRetryingUrls((prev) => new Set([...prev, mapUrl]));
+    chrome.runtime.sendMessage({ action: "retryMapFetch", versionId: version.id, mapUrl }, (resp) => {
+      setRetryingUrls((prev) => { const s = new Set(prev); s.delete(mapUrl); return s; });
+      if (resp?.ok) {
+        setFailedMapUrls(resp.failedMapUrls || []);
+        const cacheKey = versionFilesCacheKey(version.id, sizeMode);
+        versionFilesCache.delete(cacheKey);
+        chrome.runtime.sendMessage({ action: "getVersionFiles", versionId: version.id, includeContent: false }, (r) => {
+          if (!r?.ok) return;
+          const nextFiles = r.files || [];
+          const nextFailed = r.failedMapUrls || [];
+          cacheVersionFiles(version.id, sizeMode, { files: nextFiles, failedMapUrls: nextFailed });
+          setFiles(nextFiles);
+          setFailedMapUrls(nextFailed);
+        });
+      } else {
+        console.error("[SourceD] retryMapFetch failed:", mapUrl, resp?.error);
+      }
+    });
+  }, [version.id, sizeMode]);
+
   const handleDownloadMapFile = useCallback((url) => {
     ensureFullFiles().then((nextFiles) => {
       const file = nextFiles.find((f) => f.url === url);
@@ -293,7 +322,7 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
     return <Spin size="small" style={{ padding: 16 }} />;
   }
 
-  if (!files || !files.length) {
+  if (!files?.length && !failedMapUrls?.length) {
     return <Empty description={i18nMessage("dashboardEmptyVersionFiles")} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
@@ -301,27 +330,52 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
     <Flex vertical gap={8} style={{ padding: "8px 0" }}>
       <Flex justify="space-between" align="center">
         <Space>
-          <Text type="secondary">{i18nMessage("dashboardVersionFiles", [String(files.length)])}</Text>
+          <Text type="secondary">{i18nMessage("dashboardVersionFiles", [String(files?.length || 0)])}</Text>
           <Text type="secondary">{fileSizeIEC(version.byteSize || 0)}</Text>
         </Space>
         <Space>
-          <Button size="small" icon={<EyeOutlined />} onClick={handlePreview}>
+          <Button size="small" icon={<EyeOutlined />} onClick={handlePreview} disabled={!files?.length}>
             {i18nMessage("dashboardPreviewSources")}
           </Button>
-          <Button size="small" icon={<DownloadOutlined />} onClick={handleDownload}>
+          <Button size="small" icon={<DownloadOutlined />} onClick={handleDownload} disabled={!files?.length}>
             {i18nMessage("dashboardDownloadVersion")}
           </Button>
         </Space>
       </Flex>
-      <Tree
-        showIcon
-        blockNode
-        indent={16}
-        defaultExpandAll={versionTreeExpandAll}
-        defaultExpandedKeys={versionTreeExpandedKeys}
-        treeData={treeData}
-        style={{ fontSize: 12, width: "100%", minWidth: 0, overflow: "hidden" }}
-      />
+      {files?.length > 0 && (
+        <Tree
+          showIcon
+          blockNode
+          indent={16}
+          defaultExpandAll={versionTreeExpandAll}
+          defaultExpandedKeys={versionTreeExpandedKeys}
+          treeData={treeData}
+          style={{ fontSize: 12, width: "100%", minWidth: 0, overflow: "hidden" }}
+        />
+      )}
+      {failedMapUrls?.length > 0 && (
+        <Flex vertical gap={4}>
+          {failedMapUrls.map((mapUrl) => (
+            <Alert
+              key={mapUrl}
+              type="warning"
+              showIcon
+              style={{ fontSize: 12 }}
+              message={i18nMessage("dashboardVersionFileFetchFailed", [mapUrl.split("/").pop() || mapUrl])}
+              description={<Text type="secondary" style={{ fontSize: 11, wordBreak: "break-all" }}>{mapUrl}</Text>}
+              action={
+                <Button
+                  size="small"
+                  loading={retryingUrls.has(mapUrl)}
+                  onClick={() => handleRetryFetch(mapUrl)}
+                >
+                  {i18nMessage("dashboardRetryFetch")}
+                </Button>
+              }
+            />
+          ))}
+        </Flex>
+      )}
       <Drawer
         title={i18nMessage("dashboardPreviewTitle")}
         open={previewOpen}

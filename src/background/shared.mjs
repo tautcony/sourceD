@@ -17,6 +17,7 @@ export const DEFAULT_SETTINGS = {
   ignoredDomains: [],
   fetchDelayMs: 300,
   fetchTimeoutMs: 30_000,
+  fetchConcurrency: 6,
   maxMapBytes: 50 * 1024 * 1024,
   uiLanguage: "auto",
 };

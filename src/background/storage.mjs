@@ -482,6 +482,12 @@ export function deletePageHistory(pageUrl) {
   });
 }
 
+export function loadVersionRefs(versionId) {
+  const meta = state.versionIndex[versionId];
+  if (!meta) return Promise.resolve([]);
+  return ensureStorageReady().then((db) => loadVersionRefsRaw(db, meta));
+}
+
 export function loadVersionFiles(versionId, options = {}) {
   const meta = state.versionIndex[versionId];
   if (!meta) return Promise.resolve([]);

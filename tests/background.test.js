@@ -107,6 +107,7 @@ describe("background runtime regressions", () => {
       getOrCreateSession: vi.fn(),
       isValidSourceMap: vi.fn(() => true),
       scheduleSessionPersist: vi.fn(),
+      retryFailedMapFetch: vi.fn(),
     }));
 
     const runtime = await import("../src/background/runtime.mjs");
@@ -152,6 +153,7 @@ describe("background runtime regressions", () => {
       getOrCreateSession: vi.fn(),
       isValidSourceMap: vi.fn(() => true),
       scheduleSessionPersist: vi.fn(),
+      retryFailedMapFetch: vi.fn(),
     }));
 
     const runtime = await import("../src/background/runtime.mjs");
@@ -202,6 +204,7 @@ describe("background runtime regressions", () => {
       getOrCreateSession: vi.fn(),
       isValidSourceMap: vi.fn(() => true),
       scheduleSessionPersist: vi.fn(),
+      retryFailedMapFetch: vi.fn(),
     }));
 
     const runtime = await import("../src/background/runtime.mjs");
@@ -278,6 +281,7 @@ describe("background runtime regressions", () => {
       getOrCreateSession: vi.fn(),
       isValidSourceMap: vi.fn(() => true),
       scheduleSessionPersist: vi.fn(),
+      retryFailedMapFetch: vi.fn(),
     }));
 
     const shared = await import("../src/background/shared.mjs");
@@ -365,6 +369,7 @@ describe("background runtime regressions", () => {
       getOrCreateSession: vi.fn(),
       isValidSourceMap: vi.fn((raw) => raw === "valid-map"),
       scheduleSessionPersist: vi.fn(),
+      retryFailedMapFetch: vi.fn(),
     }));
 
     const shared = await import("../src/background/shared.mjs");
@@ -387,7 +392,7 @@ describe("background runtime regressions", () => {
     const keepFiles = listeners.onMessage({ action: "getVersionFiles", versionId: "v1" }, {}, versionFilesResponse);
     expect(keepFiles).toBe(true);
     await flushPromises();
-    expect(versionFilesResponse).toHaveBeenCalledWith({ ok: true, files: [{ url: "b.map", content: "{}" }] });
+    expect(versionFilesResponse).toHaveBeenCalledWith({ ok: true, files: [{ url: "b.map", content: "{}" }], failedMapUrls: [] });
 
     const deleteResponse = vi.fn();
     listeners.onMessage({ action: "deleteVersion", versionId: "v1" }, {}, deleteResponse);
@@ -497,6 +502,7 @@ describe("background runtime regressions", () => {
       getOrCreateSession: vi.fn(),
       isValidSourceMap: vi.fn(() => true),
       scheduleSessionPersist: vi.fn(),
+      retryFailedMapFetch: vi.fn(),
     }));
 
     const shared = await import("../src/background/shared.mjs");
@@ -582,6 +588,7 @@ describe("background runtime regressions", () => {
       getOrCreateSession: vi.fn(),
       isValidSourceMap: vi.fn(() => true),
       scheduleSessionPersist: vi.fn(),
+      retryFailedMapFetch: vi.fn(),
     }));
 
     await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
@@ -630,6 +637,7 @@ describe("background runtime regressions", () => {
       getOrCreateSession,
       isValidSourceMap: vi.fn(() => true),
       scheduleSessionPersist: vi.fn(),
+      retryFailedMapFetch: vi.fn(),
     }));
 
     await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
@@ -674,6 +682,7 @@ describe("background runtime regressions", () => {
       getOrCreateSession: vi.fn(),
       isValidSourceMap: vi.fn(() => true),
       scheduleSessionPersist: vi.fn(),
+      retryFailedMapFetch: vi.fn(),
     }));
 
     const shared = await import("../src/background/shared.mjs");
@@ -1230,7 +1239,7 @@ describe("fetchSourceMap regressions", () => {
     sessions.fetchSourceMap("https://example.com/app.js", callback);
     await vi.advanceTimersByTimeAsync(300);
 
-    expect(callback).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith("https://example.com/app.js.map", null);
   });
 
   it("decodes inline UTF-8 source maps correctly", async () => {

@@ -33,6 +33,7 @@ import {
   fetchSourceMap,
   getOrCreateSession,
   isValidSourceMap,
+  retryFailedMapFetch,
   scheduleSessionPersist,
 } from "./sessions.mjs";
 import {
@@ -85,6 +86,7 @@ export function registerRuntimeListeners() {
     importSourceMapsForPage,
     isValidSourceMap,
     runCleanupTasks,
+    retryFailedMapFetch,
   });
 
   chrome.tabs.onRemoved.addListener((tabId) => {

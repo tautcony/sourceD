@@ -240,6 +240,7 @@ describe("background runtime handlers", () => {
       importSourceMapsForPage: vi.fn(() => Promise.resolve({ ok: true })),
       isValidSourceMap: vi.fn((content) => content === "good"),
       runCleanupTasks: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
+      retryFailedMapFetch: vi.fn(() => Promise.resolve({ mapUrl: "a.map", mapCount: 1, failedMapUrls: [] })),
     };
     const handler = createRuntimeMessageHandler(deps);
     const sendResponse = vi.fn();
@@ -414,7 +415,7 @@ describe("background runtime handlers", () => {
 
     expect(handler({ action: "getVersionFiles", versionId: "v1" }, {}, versionFilesResponse)).toBe(true);
     await flushPromises();
-    expect(versionFilesResponse).toHaveBeenLastCalledWith({ ok: true, files: [{ url: "popup.map" }] });
+    expect(versionFilesResponse).toHaveBeenLastCalledWith({ ok: true, files: [{ url: "popup.map" }], failedMapUrls: [] });
 
     expect(handler({ action: "updateSettings", settings: { autoCleanup: false } }, {}, updateSettingsResponse)).toBe(true);
     await flushPromises();
@@ -566,6 +567,7 @@ describe("background runtime handlers", () => {
       importSourceMapsForPage: vi.fn(),
       isValidSourceMap: vi.fn(() => false),
       runCleanupTasks: null,
+      retryFailedMapFetch: vi.fn(),
     };
     const handler = createRuntimeMessageHandler(deps);
     const sendResponse = vi.fn();
@@ -626,6 +628,7 @@ describe("background runtime handlers", () => {
       importSourceMapsForPage: vi.fn(),
       isValidSourceMap: vi.fn(),
       runCleanupTasks: vi.fn(),
+      retryFailedMapFetch: vi.fn(),
     };
     const handler = createRuntimeMessageHandler(deps);
     const sendResponse = vi.fn();
@@ -691,6 +694,7 @@ describe("background runtime wiring and entry", () => {
       fetchSourceMap: vi.fn(),
       getOrCreateSession: vi.fn(),
       isValidSourceMap: vi.fn(() => true),
+      retryFailedMapFetch: vi.fn(),
       scheduleSessionPersist,
     }));
 

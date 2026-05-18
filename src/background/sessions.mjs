@@ -14,11 +14,12 @@ import {
 import {
   broadcastSummary,
   currentSettings,
+  loadVersionRefs,
   persistVersionState,
   prunePageHistory,
   touchVersionMeta,
 } from "./storage.mjs";
-import { createSourceMapFetcher } from "./sourceMaps.mjs";
+import { createSourceMapFetcher, fetchTextWithLimits } from "./sourceMaps.mjs";
 
 export async function buildSessionArtifacts(session) {
   const siteKey = pageSiteKey(session.pageUrl);
@@ -60,6 +61,7 @@ export async function buildSessionArtifacts(session) {
   return {
     siteKey,
     mapUrls,
+    failedMapUrls: session.failedMaps ? Object.keys(session.failedMaps) : [],
     byteSize,
     refs,
     blobs,
@@ -82,6 +84,7 @@ export function buildMetaForSession(session, artifacts, versionId) {
     mapUrls: artifacts.mapUrls,
     mapCount: artifacts.mapUrls.length,
     fileCount: artifacts.mapUrls.length,
+    failedMapUrls: artifacts.failedMapUrls || [],
     byteSize: artifacts.byteSize,
     storedByteSize: artifacts.byteSize,
     tabId: session.tabId,
@@ -247,4 +250,42 @@ export function isValidSourceMap(raw) {
   } catch {
     return false;
   }
+}
+
+export async function retryFailedMapFetch(versionId, mapUrl) {
+  const meta = state.versionIndex[versionId];
+  if (!meta) throw new Error("Version not found");
+  const s = currentSettings();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), s.fetchTimeoutMs ?? 30_000);
+  let content;
+  try {
+    content = await fetchTextWithLimits(mapUrl, controller.signal, s.maxMapBytes ?? 50 * 1024 * 1024);
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!content) throw new Error("Empty or non-OK response");
+  if (!isValidSourceMap(content)) throw new Error("Not a valid source map");
+  const mapHash = await hashString(content);
+  const blobId = blobStoreKey(meta.siteKey, mapHash);
+  const now = new Date().toISOString();
+  const newBlob = { id: blobId, siteKey: meta.siteKey, mapHash, byteSize: content.length, content, createdAt: now, refCount: 0 };
+  const newRef = { versionId, mapUrl, siteKey: meta.siteKey, mapHash, blobId, byteSize: content.length };
+  const existingRefs = await loadVersionRefs(versionId);
+  const dedupedRefs = existingRefs.filter((r) => r.mapUrl !== mapUrl).concat([newRef]);
+  const nextMapUrls = [...new Set([...(meta.mapUrls || []), mapUrl])].sort();
+  const nextFailedMapUrls = (meta.failedMapUrls || []).filter((u) => u !== mapUrl);
+  const existingByteSize = existingRefs.reduce((sum, r) => sum + (Number(r.byteSize) || 0), 0);
+  const updatedMeta = Object.assign({}, meta, {
+    mapUrls: nextMapUrls,
+    mapCount: nextMapUrls.length,
+    fileCount: nextMapUrls.length,
+    failedMapUrls: nextFailedMapUrls,
+    byteSize: existingByteSize + content.length,
+    lastSeenAt: now,
+  });
+  await persistVersionState(updatedMeta, dedupedRefs, { [blobId]: newBlob }, meta);
+  sortPageVersions(meta.pageUrl);
+  broadcastSummary();
+  return { mapUrl, mapCount: nextMapUrls.length, failedMapUrls: nextFailedMapUrls };
 }

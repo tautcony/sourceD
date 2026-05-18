@@ -102,6 +102,8 @@ globalThis.chrome = {
         dashboardDistributionVersions: `${substitutions?.[0] ?? ""} versions`,
         dashboardDistributionMaps: `${substitutions?.[0] ?? ""} maps`,
         dashboardEmptyVersionFiles: "No files in this version.",
+        dashboardVersionFileFetchFailed: `Failed to fetch (${substitutions?.[0] ?? ""})`,
+        dashboardRetryFetch: "Retry",
         dashboardCapturedAt: substitutions?.[0] ?? "",
         dashboardMapCount: `${substitutions?.[0] ?? ""} maps`,
         dashboardDownloadVersion: "Download version",
@@ -158,6 +160,10 @@ globalThis.chrome = {
   runtime: {
     getManifest: () => ({ version: "0.0.1", name: "SourceD" }),
     getURL: (path) => `chrome-extension://fakeid/${path}`,
+    connect: () => ({
+      onMessage: { addListener: () => {} },
+      disconnect: () => {},
+    }),
     sendMessage: (msg, cb) => {
       if (typeof cb === "function") {
         cb(null);

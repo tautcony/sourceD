@@ -47,6 +47,11 @@ export function createWebRequestHandler(deps) {
 
       fetchSourceMap(details.url, (mapUrl, content) => {
         if (state.tabSessions[session.tabId] !== session) return;
+        if (content === null) {
+          if (!session.failedMaps) session.failedMaps = {};
+          session.failedMaps[mapUrl] = true;
+          return;
+        }
         if (!isValidSourceMap(content)) return;
         session.maps[mapUrl] = content;
         refreshBadgeForTab(session.tabId, session.pageUrl);
@@ -133,6 +138,7 @@ export function createRuntimeMessageHandler(deps) {
     importSourceMapsForPage,
     isValidSourceMap,
     runCleanupTasks,
+    retryFailedMapFetch,
   } = deps;
 
   return (message, _sender, sendResponse) => {
@@ -197,9 +203,20 @@ export function createRuntimeMessageHandler(deps) {
 
     if (message.action === "getVersionFiles") {
       loadVersionFiles(message.versionId, { includeContent: message.includeContent !== false }).then((files) => {
-        sendResponse({ ok: true, files });
+        const failedMapUrls = state.versionIndex[message.versionId]?.failedMapUrls || [];
+        sendResponse({ ok: true, files, failedMapUrls });
       }).catch((err) => {
         console.error("[SourceD] getVersionFiles failed:", message.versionId, err);
+        sendResponse({ ok: false, error: errorMessage(err) });
+      });
+      return true;
+    }
+
+    if (message.action === "retryMapFetch") {
+      retryFailedMapFetch(message.versionId, message.mapUrl).then((result) => {
+        sendResponse({ ok: true, ...result });
+      }).catch((err) => {
+        console.error("[SourceD] retryMapFetch failed:", message.versionId, message.mapUrl, err);
         sendResponse({ ok: false, error: errorMessage(err) });
       });
       return true;

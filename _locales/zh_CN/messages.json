@@ -292,16 +292,44 @@
     "description": "域名过滤占位"
   },
   "dashboardSettingFetchDelayMs": {
-    "message": "抓取延迟（毫秒）",
+    "message": "抓取延迟",
     "description": "设置标签"
   },
+  "dashboardSettingFetchDelayMsHelp": {
+    "message": "脚本加载后等待此时长再抓取对应 Map，避免即离页面触发无效请求。",
+    "description": "抓取延迟说明"
+  },
   "dashboardSettingFetchTimeoutMs": {
-    "message": "抓取超时（毫秒）",
+    "message": "抓取超时",
     "description": "设置标签"
+  },
+  "dashboardSettingFetchTimeoutMsHelp": {
+    "message": "超时未响应则中止该次抓取。",
+    "description": "抓取超时说明"
+  },
+  "dashboardSettingFetchConcurrency": {
+    "message": "并发数",
+    "description": "设置标签"
+  },
+  "dashboardSettingFetchConcurrencyHelp": {
+    "message": "每次页面加载最多同时进行的 Source Map 下载数。",
+    "description": "抓取并发说明"
+  },
+  "dashboardSettingsGroupFetch": {
+    "message": "抓取行为",
+    "description": "设置子分组"
+  },
+  "dashboardSettingsGroupPerFile": {
+    "message": "单文件限制",
+    "description": "设置子分组"
   },
   "dashboardSettingMaxMapBytes": {
     "message": "最大 Source Map 体积（字节）",
     "description": "设置标签"
+  },
+  "dashboardSettingMaxMapBytesHelp": {
+    "message": "单文件限制，超过此大小的响应将被丢弃。",
+    "description": "最大 Map 体积说明"
   },
   "dashboardSaveSettings": {
     "message": "保存设置",
@@ -326,6 +354,14 @@
   "dashboardEmptyVersionFiles": {
     "message": "这个版本下没有文件。",
     "description": "版本文件为空"
+  },
+  "dashboardVersionFileFetchFailed": {
+    "message": "获取失败（$1）",
+    "description": "Source map URL 获取失败时显示的标签"
+  },
+  "dashboardRetryFetch": {
+    "message": "重试",
+    "description": "重试失败的 map 请求按钮"
   },
   "dashboardLastUpdated": {
     "message": "最近更新 $1",

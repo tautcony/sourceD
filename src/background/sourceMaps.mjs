@@ -1,6 +1,7 @@
 const DEFAULT_FETCH_DELAY_MS = 300;
 const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_MAP_BYTES = 50 * 1024 * 1024;
+const DEFAULT_FETCH_CONCURRENCY = 6;
 
 export function base64ToUtf8(base64) {
   const binary = atob(base64);
@@ -31,6 +32,70 @@ export function resolveSourceMapUrl(jsUrl, mapRef) {
 }
 
 export function createSourceMapFetcher(state, getSettings) {
+  let activeFetchCount = 0;
+  const fetchQueue = [];
+
+  // startFetch reads settings fresh each call so that queue-drained fetches
+  // also honour the latest values (not the settings captured when enqueued).
+  function startFetch(jsUrl, pending) {
+    const s = getSettings ? getSettings() : {};
+    const fetchTimeoutMs = s.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
+    const maxMapBytes = s.maxMapBytes ?? DEFAULT_MAX_MAP_BYTES;
+    activeFetchCount++;
+
+    const fanOut = (mapUrl, content) => {
+      pending.callbacks.forEach((cb) => {
+        cb(mapUrl, content);
+      });
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, fetchTimeoutMs);
+
+    fetchTextWithLimits(jsUrl, controller.signal, maxMapBytes)
+      .then((jsContent) => {
+        if (!jsContent) return;
+        const match = jsContent.match(/\/\/# sourceMappingURL=([^\s\r\n]+)/);
+        if (!match) return;
+        const mapRef = match[1];
+
+        if (mapRef.startsWith("data:application/json")) {
+          const b64 = mapRef.split(",")[1];
+          try {
+            fanOut(`${jsUrl}.map`, base64ToUtf8(b64));
+          } catch (e) {
+            console.warn("[SourceD] inline map decode error:", e);
+            fanOut(`${jsUrl}.map`, null);
+          }
+          return;
+        }
+
+        const mapUrl = resolveSourceMapUrl(jsUrl, mapRef);
+        return fetchTextWithLimits(mapUrl, controller.signal, maxMapBytes)
+          .then((text) => {
+            fanOut(mapUrl, text || null);
+          })
+          .catch((e) => {
+            console.warn("[SourceD] map fetch error:", e);
+            fanOut(mapUrl, null);
+          });
+      })
+      .catch((e) => {
+        console.warn(`[SourceD] js fetch '${jsUrl}' error:`, e);
+      })
+      .finally(() => {
+        clearTimeout(timeoutId);
+        state.pendingSourceMapFetches.delete(jsUrl);
+        activeFetchCount--;
+        if (fetchQueue.length > 0) {
+          const next = fetchQueue.shift();
+          startFetch(next.jsUrl, next.pending);
+        }
+      });
+  }
+
   return function fetchSourceMap(jsUrl, callback) {
     const existing = state.pendingSourceMapFetches.get(jsUrl);
     if (existing) {
@@ -42,57 +107,18 @@ export function createSourceMapFetcher(state, getSettings) {
     state.pendingSourceMapFetches.set(jsUrl, pending);
 
     // fetchDelayMs is read now to determine the setTimeout duration itself.
-    // fetchTimeoutMs and maxMapBytes are read inside the callback so that any
-    // settings change made during the delay window is picked up at fetch time.
+    // fetchTimeoutMs, maxMapBytes, and fetchConcurrency are read inside the
+    // callback so that settings changes during the delay window are applied.
     const fetchDelayMs = (getSettings ? getSettings() : {}).fetchDelayMs ?? DEFAULT_FETCH_DELAY_MS;
-    const fanOut = (mapUrl, content) => {
-      pending.callbacks.forEach((cb) => {
-        cb(mapUrl, content);
-      });
-    };
 
     setTimeout(() => {
-      const innerSettings = getSettings ? getSettings() : {};
-      const fetchTimeoutMs = innerSettings.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
-      const maxMapBytes = innerSettings.maxMapBytes ?? DEFAULT_MAX_MAP_BYTES;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-      }, fetchTimeoutMs);
-
-      fetchTextWithLimits(jsUrl, controller.signal, maxMapBytes)
-        .then((jsContent) => {
-          if (!jsContent) return;
-          const match = jsContent.match(/\/\/# sourceMappingURL=([^\s\r\n]+)/);
-          if (!match) return;
-          const mapRef = match[1];
-
-          if (mapRef.startsWith("data:application/json")) {
-            const b64 = mapRef.split(",")[1];
-            try {
-              fanOut(`${jsUrl}.map`, base64ToUtf8(b64));
-            } catch (e) {
-              console.warn("[SourceD] inline map decode error:", e);
-            }
-            return;
-          }
-
-          const mapUrl = resolveSourceMapUrl(jsUrl, mapRef);
-          return fetchTextWithLimits(mapUrl, controller.signal, maxMapBytes)
-            .then((text) => {
-              if (text) fanOut(mapUrl, text);
-            })
-            .catch((e) => {
-              console.warn("[SourceD] map fetch error:", e);
-            });
-        })
-        .catch((e) => {
-          console.warn(`[SourceD] js fetch '${jsUrl}' error:`, e);
-        })
-        .finally(() => {
-          clearTimeout(timeoutId);
-          state.pendingSourceMapFetches.delete(jsUrl);
-        });
+      const s = getSettings ? getSettings() : {};
+      const fetchConcurrency = s.fetchConcurrency ?? DEFAULT_FETCH_CONCURRENCY;
+      if (activeFetchCount >= fetchConcurrency) {
+        fetchQueue.push({ jsUrl, pending });
+        return;
+      }
+      startFetch(jsUrl, pending);
     }, fetchDelayMs);
   };
 }

@@ -292,16 +292,44 @@
     "description": "Dashboard ignored domains placeholder"
   },
   "dashboardSettingFetchDelayMs": {
-    "message": "Fetch Delay (ms)",
+    "message": "Fetch Delay",
     "description": "Dashboard setting label"
   },
+  "dashboardSettingFetchDelayMsHelp": {
+    "message": "Wait after a script loads before fetching its map. Avoids redundant fetches for pages you leave immediately.",
+    "description": "Dashboard fetch delay help"
+  },
   "dashboardSettingFetchTimeoutMs": {
-    "message": "Fetch Timeout (ms)",
+    "message": "Fetch Timeout",
     "description": "Dashboard setting label"
+  },
+  "dashboardSettingFetchTimeoutMsHelp": {
+    "message": "Abort a fetch that takes longer than this limit.",
+    "description": "Dashboard fetch timeout help"
+  },
+  "dashboardSettingFetchConcurrency": {
+    "message": "Concurrency",
+    "description": "Dashboard setting label"
+  },
+  "dashboardSettingFetchConcurrencyHelp": {
+    "message": "Maximum simultaneous source map downloads per page load.",
+    "description": "Dashboard fetch concurrency help"
+  },
+  "dashboardSettingsGroupFetch": {
+    "message": "Fetch Behavior",
+    "description": "Dashboard settings sub-group"
+  },
+  "dashboardSettingsGroupPerFile": {
+    "message": "Per-File Limit",
+    "description": "Dashboard settings sub-group"
   },
   "dashboardSettingMaxMapBytes": {
     "message": "Max Map Size (bytes)",
     "description": "Dashboard setting label"
+  },
+  "dashboardSettingMaxMapBytesHelp": {
+    "message": "Per individual .map file download. Responses larger than this are discarded.",
+    "description": "Dashboard max map bytes help"
   },
   "dashboardSaveSettings": {
     "message": "Save Settings",
@@ -326,6 +354,14 @@
   "dashboardEmptyVersionFiles": {
     "message": "No files in this version.",
     "description": "Dashboard empty version files"
+  },
+  "dashboardVersionFileFetchFailed": {
+    "message": "Failed to fetch ($1)",
+    "description": "Label shown for a source map URL that failed to download"
+  },
+  "dashboardRetryFetch": {
+    "message": "Retry",
+    "description": "Button to retry a failed map fetch"
   },
   "dashboardLastUpdated": {
     "message": "Updated $1",
