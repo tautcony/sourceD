@@ -184,6 +184,29 @@ describe("background sourceMaps", () => {
     expect(callbackB).toHaveBeenCalledWith("https://example.com/app.js.map", '{"version":3,"sources":["a"],"sourcesContent":["b"]}');
     expect(state.pendingSourceMapFetches.size).toBe(0);
   });
+
+  it("fans out null when a data: URI source map has no comma separator", async () => {
+    const state = { pendingSourceMapFetches: new Map() };
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const callback = vi.fn();
+    const fetchSourceMap = createSourceMapFetcher(state);
+
+    const jsContent = '//# sourceMappingURL=data:application/json;base64NOCOMMA';
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => null },
+      text: () => Promise.resolve(jsContent),
+    });
+
+    fetchSourceMap("https://example.com/app.js", callback);
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(callback).toHaveBeenCalledWith("https://example.com/app.js.map", null);
+    expect(consoleWarn).toHaveBeenCalledWith(
+      expect.stringContaining("[SourceD] inline map data URI has no comma:"),
+      expect.any(String),
+    );
+  });
 });
 
 describe("retryFailedMapFetch mutex", () => {

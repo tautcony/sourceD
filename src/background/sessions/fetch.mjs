@@ -66,7 +66,13 @@ export function createSourceMapFetcher(state, getSettings) {
         const mapRef = match[1];
 
         if (mapRef.startsWith("data:application/json")) {
-          const b64 = mapRef.split(",")[1];
+          const commaIdx = mapRef.indexOf(",");
+          if (commaIdx === -1) {
+            console.warn("[SourceD] inline map data URI has no comma:", mapRef.slice(0, 80));
+            fanOut(`${jsUrl}.map`, null);
+            return;
+          }
+          const b64 = mapRef.slice(commaIdx + 1);
           try {
             fanOut(`${jsUrl}.map`, base64ToUtf8(b64));
           } catch (e) {
