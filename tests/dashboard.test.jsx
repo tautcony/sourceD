@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { App as AntdApp } from "antd";
 import DashboardApp from "../src/dashboard/App.jsx";
-import VersionPanel, { versionFilesCache } from "../src/dashboard/VersionPanel.jsx";
+import VersionPanel, { versionFilesCache } from "../src/dashboard/panels/VersionPanel.jsx";
 import * as popupSourceMapHelpers from "../src/popup/sourcemap.mjs";
 
 vi.mock("../src/popup/sourcemap.mjs", async (importOriginal) => {

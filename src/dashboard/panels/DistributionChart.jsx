@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useCallback } from "react";
 import { Flex, Typography } from "antd";
-import { fileSizeIEC, i18nMessage } from "../shared/utils.mjs";
+import { fileSizeIEC, i18nMessage } from "../../shared/utils.mjs";
 
 const { Text } = Typography;
 

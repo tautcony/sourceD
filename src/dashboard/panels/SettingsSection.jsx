@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { App, Button, Card, Col, Divider, Flex, Form, Input, InputNumber, Row, Select, Switch, Typography } from "antd";
-import { fileSizeIEC, i18nMessage, normalizeDomainFilterList } from "../shared/utils.mjs";
-import { runtimeMessageError } from "../shared/runtime-utils.js";
+import { fileSizeIEC, i18nMessage, normalizeDomainFilterList } from "../../shared/utils.mjs";
+import { runtimeMessageError } from "../../shared/runtime-utils.js";
 
 const { Text } = Typography;
 

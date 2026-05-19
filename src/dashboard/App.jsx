@@ -18,16 +18,16 @@ import {
 import enMessages from "../../_locales/en/messages.json";
 import zhCNMessages from "../../_locales/zh_CN/messages.json";
 import { runtimeMessageError } from "../shared/runtime-utils.js";
-import DistributionChart from "./DistributionChart.jsx";
-import VersionPanel, { versionFilesCache } from "./VersionPanel.jsx";
-import SettingsSection from "./SettingsSection.jsx";
-import ImportMapsModal from "./ImportMapsModal.jsx";
+import DistributionChart from "./panels/DistributionChart.jsx";
+import VersionPanel, { versionFilesCache } from "./panels/VersionPanel.jsx";
+import SettingsSection from "./panels/SettingsSection.jsx";
+import ImportMapsModal from "./panels/ImportMapsModal.jsx";
 import {
   formatShortDate,
   formatVersionTime,
   groupPagesByDomain,
   renderCleanupSummary,
-} from "./helpers.jsx";
+} from "./utils.jsx";
 
 const { Title, Text } = Typography;
 const defaultDashboardSettings = {

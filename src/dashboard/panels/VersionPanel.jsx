@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button, Space, Typography, Tree, Empty, Spin, Flex, Drawer, Alert } from "antd";
 import { DownloadOutlined, EyeOutlined, FolderOutlined, FileTextOutlined } from "@ant-design/icons";
-import { fileSizeIEC, i18nMessage } from "../shared/utils.mjs";
-import { buildMapTree, toAntdTreeData } from "../shared/tree-utils.jsx";
-import { downloadGroup, versionZipBaseName, extractSourceFiles } from "../popup/sourcemap.mjs";
-import { runtimeMessageError } from "../shared/runtime-utils.js";
+import { fileSizeIEC, i18nMessage } from "../../shared/utils.mjs";
+import { buildMapTree, toAntdTreeData } from "../../shared/tree-utils.jsx";
+import { downloadGroup, versionZipBaseName, extractSourceFiles } from "../../popup/sourcemap.mjs";
+import { runtimeMessageError } from "../../shared/runtime-utils.js";
 import CodePreview from "./CodePreview.jsx";
 
 const { Text } = Typography;
