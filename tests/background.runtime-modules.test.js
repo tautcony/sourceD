@@ -535,15 +535,26 @@ describe("background runtime handlers", () => {
     });
   });
 
-  it("cleanupData inline fallback: empty versionIndex fast-path and non-empty with null cleanupLegacyDataTables", async () => {
+  it("cleanupData: delegates to runCleanupTasks for both empty and non-empty paths", async () => {
     const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
 
-    // Deps with runCleanupTasks: null to activate the inline fallback
+    const emptyResult = {
+      ok: true,
+      cleaned: [],
+      stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 },
+      steps: [],
+    };
+    const compactResult = {
+      ok: true,
+      cleaned: [],
+      stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 },
+      steps: [{ id: "compact-storage", label: "Compact storage data", ok: true, changed: true, summary: "Compacted storage data" }],
+    };
+    const runCleanupTasks = vi.fn()
+      .mockResolvedValueOnce(emptyResult)
+      .mockResolvedValueOnce(compactResult);
     const state = { versionIndex: {} };
-    const compactStorageData = vi.fn(() => Promise.resolve({
-      invalidVersions: [],
-      stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0, upgradedRefs: 0, upgradedVersions: 0 },
-    }));
+    const compactStorageData = vi.fn();
     const deps = {
       state,
       canonicalPageUrl: (url) => url,
@@ -566,33 +577,26 @@ describe("background runtime handlers", () => {
       cleanupLegacyDataTables: null,
       importSourceMapsForPage: vi.fn(),
       isValidSourceMap: vi.fn(() => false),
-      runCleanupTasks: null,
+      runCleanupTasks,
       retryFailedMapFetch: vi.fn(),
     };
     const handler = createRuntimeMessageHandler(deps);
     const sendResponse = vi.fn();
 
-    // Empty versionIndex → fast path (no compaction)
+    // First call → runCleanupTasks returns emptyResult
     handler({ action: "cleanupData" }, {}, sendResponse);
     await flushPromises();
     await flushPromises();
+    expect(runCleanupTasks).toHaveBeenCalledTimes(1);
     expect(compactStorageData).not.toHaveBeenCalled();
-    expect(sendResponse).toHaveBeenLastCalledWith({
-      ok: true,
-      cleaned: [],
-      stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 },
-      steps: [],
-    });
+    expect(sendResponse).toHaveBeenLastCalledWith(emptyResult);
 
-    // Non-empty versionIndex + cleanupLegacyDataTables: null → calls compactStorageData, no table step
-    state.versionIndex = { v1: { id: "v1" } };
+    // Second call → runCleanupTasks returns compactResult
     sendResponse.mockClear();
     handler({ action: "cleanupData" }, {}, sendResponse);
     await flushPromises();
     await flushPromises();
-    await flushPromises();
-    await flushPromises();
-    expect(compactStorageData).toHaveBeenCalled();
+    expect(runCleanupTasks).toHaveBeenCalledTimes(2);
     expect(sendResponse).toHaveBeenLastCalledWith(expect.objectContaining({
       ok: true,
       steps: [expect.objectContaining({ id: "compact-storage", ok: true })],

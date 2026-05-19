@@ -279,42 +279,7 @@ export function createRuntimeMessageHandler(deps) {
 
     if (message.action === "cleanupData") {
       console.info("[SourceD] cleanup started");
-      const runCleanup = runCleanupTasks || (() => {
-        if (Object.keys(state.versionIndex).length === 0) {
-          return Promise.resolve({
-            ok: true,
-            cleaned: [],
-            stats: emptyCleanupStats(),
-            steps: [],
-          });
-        }
-        return compactStorageData().then((storageState) => {
-          return Promise.resolve(cleanupLegacyDataTables ? cleanupLegacyDataTables() : null).then((tableStep) => ({
-            ok: true,
-            cleaned: storageState.invalidVersions,
-            stats: storageState.stats,
-            steps: [
-              {
-                id: "compact-storage",
-                label: "Compact storage data",
-                ok: true,
-                changed: true,
-                summary: "Compacted storage data",
-              },
-              ...(tableStep ? [{
-                id: "cleanup-data-tables",
-                label: "Cleanup legacy data tables",
-                ok: true,
-                changed: !!tableStep.changed,
-                summary: tableStep.summary || "",
-                removedTables: tableStep.removedTables || [],
-              }] : []),
-            ],
-          }));
-        });
-      });
-
-      runCleanup().then((cleanupResult) => {
+      runCleanupTasks().then((cleanupResult) => {
         console.info("[SourceD] cleanup finished:", cleanupResult);
         broadcastSummary();
         sendResponse(cleanupResult);
