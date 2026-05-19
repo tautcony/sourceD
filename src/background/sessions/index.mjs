@@ -62,6 +62,13 @@ export async function buildSessionArtifacts(session) {
     siteKey,
     mapUrls,
     failedMapUrls: session.failedMaps ? Object.keys(session.failedMaps) : [],
+    failedMapHttpStatuses: session.failedMaps
+      ? Object.fromEntries(
+          Object.entries(session.failedMaps)
+            .filter(([, v]) => v != null && typeof v === 'object' && v.httpStatus != null)
+            .map(([url, v]) => [url, v.httpStatus])
+        )
+      : {},
     byteSize,
     refs,
     blobs,
@@ -85,6 +92,7 @@ export function buildMetaForSession(session, artifacts, versionId) {
     mapCount: artifacts.mapUrls.length,
     fileCount: artifacts.mapUrls.length,
     failedMapUrls: artifacts.failedMapUrls || [],
+    failedMapHttpStatuses: artifacts.failedMapHttpStatuses || {},
     byteSize: artifacts.byteSize,
     storedByteSize: artifacts.byteSize,
     tabId: session.tabId,
@@ -255,6 +263,9 @@ export function isValidSourceMap(raw) {
 export async function retryFailedMapFetch(versionId, mapUrl) {
   const meta = state.versionIndex[versionId];
   if (!meta) throw new Error("Version not found");
+  if (meta.failedMapHttpStatuses?.[mapUrl] === 404) {
+    throw new Error("HTTP 404: Map does not exist");
+  }
   const s = currentSettings();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), s.fetchTimeoutMs ?? 30_000);
@@ -264,7 +275,21 @@ export async function retryFailedMapFetch(versionId, mapUrl) {
   } finally {
     clearTimeout(timer);
   }
-  if (!content) throw new Error("Empty or non-OK response");
+  if (!content || typeof content !== 'string') {
+    const httpStatus = content?.httpError;
+    if (httpStatus === 404) {
+      // Reclassify this failure as a permanent 404 so the UI can move it into
+      // the tree and stop offering a retry button, even for pre-existing records
+      // that were stored without httpStatus information.
+      const nextFailedMapHttpStatuses = Object.assign({}, meta.failedMapHttpStatuses || {}, { [mapUrl]: 404 });
+      const updatedMeta = Object.assign({}, meta, { failedMapHttpStatuses: nextFailedMapHttpStatuses });
+      const existingRefs = await loadVersionRefs(versionId);
+      await persistVersionState(updatedMeta, existingRefs, {}, meta);
+      broadcastSummary();
+      return { mapUrl, mapCount: (meta.mapUrls || []).length, failedMapUrls: meta.failedMapUrls || [], failedMapHttpStatuses: nextFailedMapHttpStatuses };
+    }
+    throw new Error(httpStatus ? `HTTP ${httpStatus}` : "Empty or non-OK response");
+  }
   if (!isValidSourceMap(content)) throw new Error("Not a valid source map");
   const mapHash = await hashString(content);
   const blobId = blobStoreKey(meta.siteKey, mapHash);
@@ -275,17 +300,20 @@ export async function retryFailedMapFetch(versionId, mapUrl) {
   const dedupedRefs = existingRefs.filter((r) => r.mapUrl !== mapUrl).concat([newRef]);
   const nextMapUrls = [...new Set([...(meta.mapUrls || []), mapUrl])].sort();
   const nextFailedMapUrls = (meta.failedMapUrls || []).filter((u) => u !== mapUrl);
+  const nextFailedMapHttpStatuses = Object.assign({}, meta.failedMapHttpStatuses || {});
+  delete nextFailedMapHttpStatuses[mapUrl];
   const existingByteSize = existingRefs.reduce((sum, r) => sum + (Number(r.byteSize) || 0), 0);
   const updatedMeta = Object.assign({}, meta, {
     mapUrls: nextMapUrls,
     mapCount: nextMapUrls.length,
     fileCount: nextMapUrls.length,
     failedMapUrls: nextFailedMapUrls,
+    failedMapHttpStatuses: nextFailedMapHttpStatuses,
     byteSize: existingByteSize + content.length,
     lastSeenAt: now,
   });
   await persistVersionState(updatedMeta, dedupedRefs, { [blobId]: newBlob }, meta);
   sortPageVersions(meta.pageUrl);
   broadcastSummary();
-  return { mapUrl, mapCount: nextMapUrls.length, failedMapUrls: nextFailedMapUrls };
+  return { mapUrl, mapCount: nextMapUrls.length, failedMapUrls: nextFailedMapUrls, failedMapHttpStatuses: nextFailedMapHttpStatuses };
 }

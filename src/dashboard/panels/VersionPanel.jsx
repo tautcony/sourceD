@@ -24,7 +24,7 @@ function cacheVersionFiles(versionId, sizeMode, data) {
     const firstKey = versionFilesCache.keys().next().value;
     versionFilesCache.delete(firstKey);
   }
-  versionFilesCache.set(cacheKey, { files: data.files, failedMapUrls: data.failedMapUrls || [] });
+  versionFilesCache.set(cacheKey, { files: data.files, failedMapUrls: data.failedMapUrls || [], failedMapHttpStatuses: data.failedMapHttpStatuses || {} });
 }
 
 function buildSourceTree(sourceFiles) {
@@ -115,6 +115,7 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
   const [files, setFiles] = useState(null);
   const [loadingFiles, setLoadingFiles] = useState(true);
   const [failedMapUrls, setFailedMapUrls] = useState([]);
+  const [failedMapHttpStatuses, setFailedMapHttpStatuses] = useState({});
   const [retryingUrls, setRetryingUrls] = useState(new Set());
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -129,6 +130,7 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
     setLoadingFiles(true);
     setFiles(null);
     setFailedMapUrls([]);
+    setFailedMapHttpStatuses({});
     setPreviewOpen(false);
     setSelectedFile(null);
     fullFilesRef.current = null;
@@ -141,6 +143,7 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
         setLoadingFiles(false);
         setFiles(cached.files);
         setFailedMapUrls(cached.failedMapUrls);
+        setFailedMapHttpStatuses(cached.failedMapHttpStatuses || {});
       }
       return () => { cancelled = true; };
     }
@@ -161,10 +164,12 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
       }
       const nextFiles = resp.files || [];
       const nextFailed = resp.failedMapUrls || [];
-      cacheVersionFiles(version.id, sizeMode, { files: nextFiles, failedMapUrls: nextFailed });
+      const nextFailedHttpStatuses = resp.failedMapHttpStatuses || {};
+      cacheVersionFiles(version.id, sizeMode, { files: nextFiles, failedMapUrls: nextFailed, failedMapHttpStatuses: nextFailedHttpStatuses });
       setLoadingFiles(false);
       setFiles(nextFiles);
       setFailedMapUrls(nextFailed);
+      setFailedMapHttpStatuses(nextFailedHttpStatuses);
     });
     return () => { cancelled = true; };
   }, [version.id, version.mapCount, sizeMode]);
@@ -242,15 +247,18 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
       setRetryingUrls((prev) => { const s = new Set(prev); s.delete(mapUrl); return s; });
       if (resp?.ok) {
         setFailedMapUrls(resp.failedMapUrls || []);
+        setFailedMapHttpStatuses(resp.failedMapHttpStatuses || {});
         const cacheKey = versionFilesCacheKey(version.id, sizeMode);
         versionFilesCache.delete(cacheKey);
         chrome.runtime.sendMessage({ action: "getVersionFiles", versionId: version.id, includeContent: false }, (r) => {
           if (!r?.ok) return;
           const nextFiles = r.files || [];
           const nextFailed = r.failedMapUrls || [];
-          cacheVersionFiles(version.id, sizeMode, { files: nextFiles, failedMapUrls: nextFailed });
+          const nextFailedHttpStatuses = r.failedMapHttpStatuses || {};
+          cacheVersionFiles(version.id, sizeMode, { files: nextFiles, failedMapUrls: nextFailed, failedMapHttpStatuses: nextFailedHttpStatuses });
           setFiles(nextFiles);
           setFailedMapUrls(nextFailed);
+          setFailedMapHttpStatuses(nextFailedHttpStatuses);
         });
       } else {
         console.error("[SourceD] retryMapFetch failed:", mapUrl, resp?.error);
@@ -278,10 +286,20 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewRenderKey]);
 
+  const notFoundMapUrls = useMemo(
+    () => failedMapUrls.filter((url) => failedMapHttpStatuses[url] === 404),
+    [failedMapUrls, failedMapHttpStatuses],
+  );
+  const retryableFailedMapUrls = useMemo(
+    () => failedMapUrls.filter((url) => failedMapHttpStatuses[url] !== 404),
+    [failedMapUrls, failedMapHttpStatuses],
+  );
+
   const treeData = useMemo(() => {
-    if (!files?.length) return [];
-    return toAntdTreeData(buildMapTree(files), "", { onDownloadFile: handleDownloadMapFile });
-  }, [files, handleDownloadMapFile]);
+    const notFoundEntries = notFoundMapUrls.map((url) => ({ url, httpStatus: failedMapHttpStatuses[url] }));
+    if (!files?.length && !notFoundEntries.length) return [];
+    return toAntdTreeData(buildMapTree(files || [], notFoundEntries), "", { onDownloadFile: handleDownloadMapFile });
+  }, [files, notFoundMapUrls, failedMapHttpStatuses, handleDownloadMapFile]);
 
   const versionTreeExpandAll = (files?.length || 0) <= EXPAND_ALL_MAP_FILES_LIMIT;
   const versionTreeExpandedKeys = useMemo(
@@ -342,7 +360,7 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
           </Button>
         </Space>
       </Flex>
-      {files?.length > 0 && (
+      {(files?.length > 0 || notFoundMapUrls.length > 0) && (
         <Tree
           showIcon
           blockNode
@@ -353,15 +371,15 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
           style={{ fontSize: 12, width: "100%", minWidth: 0, overflow: "hidden" }}
         />
       )}
-      {failedMapUrls?.length > 0 && (
+      {retryableFailedMapUrls?.length > 0 && (
         <Flex vertical gap={4}>
-          {failedMapUrls.map((mapUrl) => (
+          {retryableFailedMapUrls.map((mapUrl) => (
             <Alert
               key={mapUrl}
               type="warning"
               showIcon
               style={{ fontSize: 12 }}
-              message={i18nMessage("dashboardVersionFileFetchFailed", [mapUrl.split("/").pop() || mapUrl])}
+              title={i18nMessage("dashboardVersionFileFetchFailed", [mapUrl.split("/").pop() || mapUrl])}
               description={<Text type="secondary" style={{ fontSize: 11, wordBreak: "break-all" }}>{mapUrl}</Text>}
               action={
                 <Button
@@ -381,8 +399,7 @@ export default function VersionPanel({ version, sizeMode = "uncompressed" }) {
         open={previewOpen}
         onClose={handleClosePreview}
         destroyOnClose
-        width="70vw"
-        styles={{ body: { padding: 0, display: "flex", flexDirection: "column", overflow: "hidden" } }}
+        styles={{ wrapper: { width: "70vw" }, body: { padding: 0, display: "flex", flexDirection: "column", overflow: "hidden" } }}
       >
         {previewLoading ? (
           <Flex justify="center" align="center" style={{ height: "100%" }}>

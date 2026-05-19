@@ -11,7 +11,7 @@ export function base64ToUtf8(base64) {
 
 export function fetchTextWithLimits(url, signal, maxBytes = DEFAULT_MAX_MAP_BYTES) {
   return fetch(url, { signal }).then((resp) => {
-    if (!resp.ok) return null;
+    if (!resp.ok) return { httpError: resp.status };
 
     const declaredLength = Number(resp.headers?.get?.("content-length") || 0);
     if (declaredLength > maxBytes) {
@@ -43,9 +43,13 @@ export function createSourceMapFetcher(state, getSettings) {
     const maxMapBytes = s.maxMapBytes ?? DEFAULT_MAX_MAP_BYTES;
     activeFetchCount++;
 
-    const fanOut = (mapUrl, content) => {
+    const fanOut = (mapUrl, content, httpStatus) => {
       pending.callbacks.forEach((cb) => {
-        cb(mapUrl, content);
+        if (httpStatus !== undefined) {
+          cb(mapUrl, content, httpStatus);
+        } else {
+          cb(mapUrl, content);
+        }
       });
     };
 
@@ -56,7 +60,7 @@ export function createSourceMapFetcher(state, getSettings) {
 
     fetchTextWithLimits(jsUrl, controller.signal, maxMapBytes)
       .then((jsContent) => {
-        if (!jsContent) return;
+        if (!jsContent || typeof jsContent !== 'string') return;
         const match = jsContent.match(/\/\/# sourceMappingURL=([^\s\r\n]+)/);
         if (!match) return;
         const mapRef = match[1];
@@ -74,8 +78,12 @@ export function createSourceMapFetcher(state, getSettings) {
 
         const mapUrl = resolveSourceMapUrl(jsUrl, mapRef);
         return fetchTextWithLimits(mapUrl, controller.signal, maxMapBytes)
-          .then((text) => {
-            fanOut(mapUrl, text || null);
+          .then((result) => {
+            if (result !== null && typeof result === 'object' && 'httpError' in result) {
+              fanOut(mapUrl, null, result.httpError);
+            } else {
+              fanOut(mapUrl, result || null);
+            }
           })
           .catch((e) => {
             console.warn("[SourceD] map fetch error:", e);

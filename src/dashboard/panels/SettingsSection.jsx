@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { App, Button, Card, Col, Divider, Flex, Form, Input, InputNumber, Row, Select, Switch, Typography } from "antd";
+import { App, Button, Card, Col, Divider, Flex, Form, Input, InputNumber, Row, Select, Space, Switch, Typography } from "antd";
 import { fileSizeIEC, i18nMessage, normalizeDomainFilterList } from "../../shared/utils.mjs";
 import { runtimeMessageError } from "../../shared/runtime-utils.js";
 
@@ -100,7 +100,7 @@ export default function SettingsSection({ settings, onReload }) {
         <Col xs={24} md={12}>
           <Flex vertical gap={12}>
             <Card size="small" title={i18nMessage("dashboardSettingsGroupCapture")}>
-              <Divider style={{ margin: "0 0 12px" }} orientation="left" orientationMargin={0}>
+              <Divider style={{ margin: "0 0 12px" }} titlePlacement="left" styles={{ content: { margin: 0 } }}>
                 <Text type="secondary" style={{ fontSize: 11 }}>
                   {i18nMessage("dashboardSettingsGroupFetch")}
                 </Text>
@@ -112,7 +112,10 @@ export default function SettingsSection({ settings, onReload }) {
                     name="fetchDelayMs"
                     extra={i18nMessage("dashboardSettingFetchDelayMsHelp")}
                   >
-                    <InputNumber min={0} max={5000} addonAfter="ms" style={{ width: "100%" }} />
+                    <Space.Compact style={{ width: "100%" }}>
+                      <InputNumber min={0} max={5000} style={{ flex: 1 }} />
+                      <Input value="ms" disabled style={{ width: "auto" }} />
+                    </Space.Compact>
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12}>
@@ -121,7 +124,10 @@ export default function SettingsSection({ settings, onReload }) {
                     name="fetchTimeoutMs"
                     extra={i18nMessage("dashboardSettingFetchTimeoutMsHelp")}
                   >
-                    <InputNumber min={500} max={120_000} addonAfter="ms" style={{ width: "100%" }} />
+                    <Space.Compact style={{ width: "100%" }}>
+                      <InputNumber min={500} max={120_000} style={{ flex: 1 }} />
+                      <Input value="ms" disabled style={{ width: "auto" }} />
+                    </Space.Compact>
                   </Form.Item>
                 </Col>
               </Row>
@@ -132,7 +138,7 @@ export default function SettingsSection({ settings, onReload }) {
               >
                 <InputNumber min={1} max={20} style={{ width: "100%" }} />
               </Form.Item>
-              <Divider style={{ margin: "4px 0 12px" }} orientation="left" orientationMargin={0}>
+              <Divider style={{ margin: "4px 0 12px" }} titlePlacement="left" styles={{ content: { margin: 0 } }}>
                 <Text type="secondary" style={{ fontSize: 11 }}>
                   {i18nMessage("dashboardSettingsGroupPerFile")}
                 </Text>

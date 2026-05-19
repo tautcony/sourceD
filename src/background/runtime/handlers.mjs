@@ -45,11 +45,11 @@ export function createWebRequestHandler(deps) {
       if (shouldIgnoreAnalysisForUrl(tab.url, currentSettings().ignoredDomains)) return;
       const session = getOrCreateSession(tab);
 
-      fetchSourceMap(details.url, (mapUrl, content) => {
+      fetchSourceMap(details.url, (mapUrl, content, httpStatus) => {
         if (state.tabSessions[session.tabId] !== session) return;
         if (content === null) {
           if (!session.failedMaps) session.failedMaps = {};
-          session.failedMaps[mapUrl] = true;
+          session.failedMaps[mapUrl] = { httpStatus: httpStatus != null ? httpStatus : null };
           return;
         }
         if (!isValidSourceMap(content)) return;
@@ -203,8 +203,10 @@ export function createRuntimeMessageHandler(deps) {
 
     if (message.action === "getVersionFiles") {
       loadVersionFiles(message.versionId, { includeContent: message.includeContent !== false }).then((files) => {
-        const failedMapUrls = state.versionIndex[message.versionId]?.failedMapUrls || [];
-        sendResponse({ ok: true, files, failedMapUrls });
+        const meta = state.versionIndex[message.versionId];
+        const failedMapUrls = meta?.failedMapUrls || [];
+        const failedMapHttpStatuses = meta?.failedMapHttpStatuses || {};
+        sendResponse({ ok: true, files, failedMapUrls, failedMapHttpStatuses });
       }).catch((err) => {
         console.error("[SourceD] getVersionFiles failed:", message.versionId, err);
         sendResponse({ ok: false, error: errorMessage(err) });

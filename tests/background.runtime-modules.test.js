@@ -415,7 +415,7 @@ describe("background runtime handlers", () => {
 
     expect(handler({ action: "getVersionFiles", versionId: "v1" }, {}, versionFilesResponse)).toBe(true);
     await flushPromises();
-    expect(versionFilesResponse).toHaveBeenLastCalledWith({ ok: true, files: [{ url: "popup.map" }], failedMapUrls: [] });
+    expect(versionFilesResponse).toHaveBeenLastCalledWith({ ok: true, files: [{ url: "popup.map" }], failedMapUrls: [], failedMapHttpStatuses: {} });
 
     expect(handler({ action: "updateSettings", settings: { autoCleanup: false } }, {}, updateSettingsResponse)).toBe(true);
     await flushPromises();

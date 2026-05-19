@@ -414,7 +414,7 @@ describe("background runtime regressions", () => {
     const keepFiles = listeners.onMessage({ action: "getVersionFiles", versionId: "v1" }, {}, versionFilesResponse);
     expect(keepFiles).toBe(true);
     await flushPromises();
-    expect(versionFilesResponse).toHaveBeenCalledWith({ ok: true, files: [{ url: "b.map", content: "{}" }], failedMapUrls: [] });
+    expect(versionFilesResponse).toHaveBeenCalledWith({ ok: true, files: [{ url: "b.map", content: "{}" }], failedMapUrls: [], failedMapHttpStatuses: {} });
 
     const deleteResponse = vi.fn();
     listeners.onMessage({ action: "deleteVersion", versionId: "v1" }, {}, deleteResponse);
