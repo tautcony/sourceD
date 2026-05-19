@@ -90,6 +90,10 @@ export function createPopupPortHandler(deps) {
           postPortError(port, "getVersionFiles", err);
         });
       } else if (msg.action === "clearAll") {
+        if (state.storageCompactionInProgress) {
+          postPortError(port, "clearAll", new Error("Storage compaction in progress; please try again shortly"));
+          return;
+        }
         const removeIds = Object.keys(state.versionIndex);
         deleteVersions(removeIds).then(() => {
           removeVersionsFromIndexes(removeIds);
@@ -98,6 +102,10 @@ export function createPopupPortHandler(deps) {
           postPortError(port, "clearAll", err);
         });
       } else if (msg.action === "clearOlderThan7d") {
+        if (state.storageCompactionInProgress) {
+          postPortError(port, "clearOlderThan7d", new Error("Storage compaction in progress; please try again shortly"));
+          return;
+        }
         const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
         const removeIds = Object.keys(state.versionIndex).filter((id) => {
           return new Date(state.versionIndex[id].lastSeenAt).getTime() < cutoff;
@@ -133,8 +141,6 @@ export function createRuntimeMessageHandler(deps) {
     refreshBadgeForActiveTab,
     deletePageHistoryAndSessions,
     deleteSiteHistoryAndSessions,
-    compactStorageData,
-    cleanupLegacyDataTables,
     importSourceMapsForPage,
     isValidSourceMap,
     runCleanupTasks,

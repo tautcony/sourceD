@@ -214,6 +214,48 @@ describe("background runtime handlers", () => {
     await flushPromises();
   });
 
+  it("clearAll and clearOlderThan7d are rejected during active storage compaction", async () => {
+    const state = {
+      popupPorts: [],
+      storageCompactionInProgress: true,
+      versionIndex: {
+        old: { lastSeenAt: "2026-01-01T00:00:00.000Z" },
+      },
+    };
+    const deleteVersions = vi.fn(() => Promise.resolve());
+    const handler = createPopupPortHandler({
+      state,
+      pushSummary: vi.fn(),
+      loadVersionFiles: vi.fn(),
+      deleteVersions,
+      removeVersionsFromIndexes: vi.fn(),
+      broadcastSummary: vi.fn(),
+      refreshBadgeForActiveTab: vi.fn(),
+    });
+
+    const port = makePort();
+    handler(port);
+
+    port._message({ action: "clearAll" });
+    await flushPromises();
+    expect(deleteVersions).not.toHaveBeenCalled();
+    expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: "error",
+      action: "clearAll",
+      error: expect.stringContaining("compaction in progress"),
+    }));
+
+    port.postMessage.mockClear();
+    port._message({ action: "clearOlderThan7d" });
+    await flushPromises();
+    expect(deleteVersions).not.toHaveBeenCalled();
+    expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: "error",
+      action: "clearOlderThan7d",
+      error: expect.stringContaining("compaction in progress"),
+    }));
+  });
+
   it("covers runtime message handler success and failure matrix", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const state = { versionIndex: { v1: { id: "v1", createdAt: "c", lastSeenAt: "l", mapCount: 1, byteSize: 1, title: "T" } }, versionsByPage: { "https://example.com/app": ["v1"] } };
