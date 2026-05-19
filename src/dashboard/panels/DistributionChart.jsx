@@ -153,13 +153,6 @@ export default function DistributionChart({ items, colorMap = {}, onLegendClick 
     if (ref) ref.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, []);
 
-  const handleInnerClick = useCallback((domain) => {
-    setActiveSiteKey((prev) => {
-      if (prev && registrableDomain(prev) === domain) return null;
-      return outerStops.find((s) => registrableDomain(s.siteKey) === domain)?.siteKey || null;
-    });
-  }, [outerStops]);
-
   const handleLegendClick = useCallback((siteKey) => {
     setActiveSiteKey(siteKey);
     if (onLegendClick) onLegendClick(siteKey);
@@ -219,19 +212,11 @@ export default function DistributionChart({ items, colorMap = {}, onLegendClick 
           })}
 
           {/* Inner ring: eTLD+1 domains (only when multiple domains present) */}
-          {showInnerRing && innerStops.map((item) => {
-            const isActive = activeDomain === item.domain;
-            return (
-              <g
-                key={item.domain}
-                style={{
-                  transition: "transform 0.3s ease",
-                  transformOrigin: `${CHART_CENTER}px ${CHART_CENTER}px`,
-                  transform: isActive ? `translate(${item.offset.dx}px, ${item.offset.dy}px)` : "translate(0, 0)",
-                  cursor: "pointer",
-                }}
-                onClick={() => handleInnerClick(item.domain)}
-              >
+          {showInnerRing && innerStops.map((item) => (
+            <g
+              key={item.domain}
+              style={{ transition: "opacity 0.2s ease" }}
+            >
                 <path
                   d={item.path}
                   fill={item.color}
@@ -240,9 +225,8 @@ export default function DistributionChart({ items, colorMap = {}, onLegendClick 
                   fillRule="evenodd"
                   aria-label={`${item.domain}: ${fileSizeIEC(item.byteSize || 0)}`}
                 />
-              </g>
-            );
-          })}
+            </g>
+          ))}
 
           {/* Center white hole with summary text */}
           <circle cx={CHART_CENTER} cy={CHART_CENTER} r={CENTER_R - 1} fill="#fff" />

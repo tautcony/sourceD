@@ -986,6 +986,48 @@ describe("session persistence regressions", () => {
     expect(Object.values(shared.state.versionIndex).every((meta) => meta.pageUrl === "https://example.com/app")).toBe(true);
   });
 
+  it("skips new version when a different page on the same site has identical maps", async () => {
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
+      return {
+        ...actual,
+        broadcastSummary: vi.fn(),
+        currentSettings: vi.fn(() => ({ autoCleanup: false })),
+        persistVersionState: vi.fn(() => Promise.resolve()),
+        prunePageHistory: vi.fn(() => Promise.resolve()),
+        touchVersionMeta: vi.fn(() => Promise.resolve()),
+      };
+    });
+
+    vi.doUnmock("../src/background/sessions/index.mjs");
+
+    const shared = await import("../src/background/shared.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
+
+    shared.state.versionIndex = {};
+    shared.state.versionsByPage = {};
+    shared.state.tabSessions = {};
+
+    const mapContent = JSON.stringify({ version: 3, sources: ["app.js"], mappings: "" });
+
+    // First page: create its version normally
+    const sessionA = sessions.getOrCreateSession({ id: 1, url: "https://example.com/page-a", title: "Page A" });
+    sessionA.maps = { "https://example.com/app.js.map": mapContent };
+    await sessions.upsertSessionVersion(sessionA);
+
+    expect(storage.persistVersionState).toHaveBeenCalledTimes(1);
+    expect(Object.keys(shared.state.versionIndex)).toHaveLength(1);
+
+    // Second page with identical maps — must not create a duplicate version
+    const sessionB = sessions.getOrCreateSession({ id: 2, url: "https://example.com/page-b", title: "Page B" });
+    sessionB.maps = { "https://example.com/app.js.map": mapContent };
+    await sessions.upsertSessionVersion(sessionB);
+
+    expect(storage.persistVersionState).toHaveBeenCalledTimes(1); // still 1, no new write
+    expect(Object.keys(shared.state.versionIndex)).toHaveLength(1); // still only the original version
+  });
+
   it("does not leave a new version in memory when persistence fails", async () => {
     vi.doMock("../src/background/storage/index.mjs", async () => {
       const actual = await vi.importActual("../src/background/storage/index.mjs");
@@ -1231,6 +1273,70 @@ describe("storage compaction regressions", () => {
     expect(result.invalidVersions).toEqual([]);
     expect(result.desiredRefs).toHaveLength(1);
     expect(result.desiredRefs[0].value.mapUrl).toBe("https://example.com/a.map");
+  });
+
+  it("removes cross-page duplicates within the same site during compaction", async () => {
+    const storageCompaction = await import("../src/background/storage/compaction.mjs");
+
+    // Two different pages on the same site with identical map content
+    const sharedMapUrl = "https://example.com/shared.map";
+    const sharedBlobId = "https://example.com::hash-shared";
+
+    const metaA = {
+      id: "vA",
+      pageUrl: "https://example.com/page-a",
+      siteKey: "https://example.com",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-01T12:00:00.000Z",
+      mapUrls: [sharedMapUrl],
+    };
+    const metaB = {
+      id: "vB",
+      pageUrl: "https://example.com/page-b",
+      siteKey: "https://example.com",
+      createdAt: "2026-01-02T00:00:00.000Z",
+      lastSeenAt: "2026-01-02T12:00:00.000Z",
+      mapUrls: [sharedMapUrl],
+    };
+
+    const mapValues = {
+      [`vA::${sharedMapUrl}`]: { versionId: "vA", mapUrl: sharedMapUrl, siteKey: "https://example.com", mapHash: "hash-shared", blobId: sharedBlobId, byteSize: VALID_MAP.length },
+      [`vB::${sharedMapUrl}`]: { versionId: "vB", mapUrl: sharedMapUrl, siteKey: "https://example.com", mapHash: "hash-shared", blobId: sharedBlobId, byteSize: VALID_MAP.length },
+    };
+    const blobs = [
+      { id: sharedBlobId, siteKey: "https://example.com", mapHash: "hash-shared", content: VALID_MAP, createdAt: "2026-01-01T00:00:00.000Z", refCount: 2 },
+    ];
+
+    const db = {
+      transaction: vi.fn((storeName) => ({
+        objectStore: vi.fn(() => {
+          if (storeName === "versionMaps") {
+            return {
+              get: vi.fn((key) => {
+                const req = { result: mapValues[key] ?? null, onsuccess: null, onerror: null };
+                queueMicrotask(() => { if (req.onsuccess) req.onsuccess(); });
+                return req;
+              }),
+            };
+          }
+          return {
+            getAll: vi.fn(() => {
+              const req = { result: blobs, onsuccess: null, onerror: null };
+              queueMicrotask(() => { if (req.onsuccess) req.onsuccess(); });
+              return req;
+            }),
+          };
+        }),
+      })),
+    };
+
+    const result = await storageCompaction.buildCompactedStorageState(db, [metaA, metaB]);
+
+    // Only one version should survive; the later duplicate should be in invalidVersions
+    expect(result.desiredMetas).toHaveLength(1);
+    expect(result.invalidVersions).toHaveLength(1);
+    expect(result.invalidVersions[0].reason).toBe("cross_page_duplicate");
+    expect(result.desiredRefs).toHaveLength(1);
   });
 
   it("rejects blocked IndexedDB openings", async () => {

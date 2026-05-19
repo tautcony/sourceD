@@ -282,6 +282,28 @@ describe("background shared helpers", () => {
     const best = shared.findBestVersionMatch("https://example.com/app", "a.map#h1");
     expect(best).toEqual({ exactId: null, supersetId: "v_small" });
   });
+
+  it("findExactMatchAcrossSite returns matching version id or null", async () => {
+    const shared = await import("../src/background/shared.mjs");
+
+    shared.state.versionIndex = {
+      v1: { id: "v1", siteKey: "https://example.com", signature: "a.map#hash_a|b.map#hash_b" },
+      v2: { id: "v2", siteKey: "https://other.com", signature: "a.map#hash_a|b.map#hash_b" },
+    };
+
+    // Exact match for the correct siteKey
+    expect(shared.findExactMatchAcrossSite("https://example.com", "a.map#hash_a|b.map#hash_b")).toBe("v1");
+
+    // Different siteKey: no match even if signature is identical
+    expect(shared.findExactMatchAcrossSite("https://other.com", "a.map#hash_a|b.map#hash_b")).toBe("v2");
+
+    // Different signature: no match
+    expect(shared.findExactMatchAcrossSite("https://example.com", "a.map#hash_a")).toBeNull();
+
+    // Empty/null signature: no match
+    expect(shared.findExactMatchAcrossSite("https://example.com", null)).toBeNull();
+    expect(shared.findExactMatchAcrossSite("https://example.com", "")).toBeNull();
+  });
 });
 
 describe("background session helpers", () => {

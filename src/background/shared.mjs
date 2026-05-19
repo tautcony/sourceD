@@ -151,6 +151,22 @@ export function findBestVersionMatch(pageUrl, signature) {
   return { exactId: null, supersetId };
 }
 
+/**
+ * Return the ID of any existing version in the same site that has an
+ * identical signature (exact map-URL + map-hash set, no more no less).
+ * Used to suppress duplicate page entries when the map content is unchanged.
+ */
+export function findExactMatchAcrossSite(siteKey, signature) {
+  if (!signature) return null;
+  for (const id of Object.keys(state.versionIndex)) {
+    const meta = state.versionIndex[id];
+    if (meta && meta.siteKey === siteKey && meta.signature === signature) {
+      return id;
+    }
+  }
+  return null;
+}
+
 export function versionLabel(meta, index, total) {
   const stamp = new Date(meta.createdAt || meta.lastSeenAt).toLocaleString("en-US", {
     month: "2-digit",

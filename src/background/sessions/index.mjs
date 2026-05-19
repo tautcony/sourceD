@@ -1,5 +1,6 @@
 import {
   findBestVersionMatch,
+  findExactMatchAcrossSite,
   buildSignatureFromRefs,
   canonicalPageUrl,
   ensurePageBucket,
@@ -179,6 +180,13 @@ export function upsertSessionVersion(session) {
 
     if (supersetId) {
       return updateExistingVersionMeta(supersetId);
+    }
+
+    // Cross-page deduplication: if another page under the same site already
+    // has an identical set of maps (exact signature match), skip creating a
+    // duplicate version for this page.
+    if (findExactMatchAcrossSite(artifacts.siteKey, artifacts.signature)) {
+      return;
     }
 
     const newId = `${session.pageUrl}::${Date.now()}::${Math.random().toString(36).slice(2, 8)}`;

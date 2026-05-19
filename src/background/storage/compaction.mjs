@@ -207,6 +207,7 @@ export function buildCompactedStorageState(db, metas) {
     const desiredVersionMap = {};
     const desiredRefsByVersion = {};
     const desiredIdsByPage = {};
+    const desiredIdsBySite = {};
     let upgradedRefs = 0;
 
     existingBlobs.forEach((blob) => {
@@ -292,10 +293,27 @@ export function buildCompactedStorageState(db, metas) {
         return;
       }
 
+      // Cross-page deduplication within the same site: if another page under
+      // the same siteKey already has an exact signature match, suppress this
+      // version as a duplicate rather than creating a redundant entry.
+      const siteIds = desiredIdsBySite[normalizedSiteKey] || [];
+      const crossPageExactId = siteIds.find((id) => desiredVersionMap[id]?.signature === nextMeta.signature);
+      if (crossPageExactId) {
+        invalidVersionMap[meta.id] = {
+          id: meta.id,
+          pageUrl: canonicalPageUrl(meta.pageUrl),
+          reason: "cross_page_duplicate",
+          mapCount: meta.mapUrls ? meta.mapUrls.length : 0,
+        };
+        return;
+      }
+
       desiredVersionMap[meta.id] = nextMeta;
       desiredRefsByVersion[meta.id] = refs.slice().sort((a, b) => a.mapUrl.localeCompare(b.mapUrl));
       if (!desiredIdsByPage[normalizedPageUrl]) desiredIdsByPage[normalizedPageUrl] = [];
       desiredIdsByPage[normalizedPageUrl].push(meta.id);
+      if (!desiredIdsBySite[normalizedSiteKey]) desiredIdsBySite[normalizedSiteKey] = [];
+      desiredIdsBySite[normalizedSiteKey].push(meta.id);
     });
 
     Object.keys(desiredVersionMap).forEach((id) => {

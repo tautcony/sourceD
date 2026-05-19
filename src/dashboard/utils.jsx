@@ -95,8 +95,9 @@ export function groupPagesByDomain(pages) {
     .sort((a, b) => new Date(b.lastSeenAt || 0) - new Date(a.lastSeenAt || 0));
 }
 
-// Ten well-spaced hues (blue, purple, cyan, green, magenta, volcano, gold, lime, geekblue, red)
-const DOMAIN_HUES = [210, 265, 183, 102, 330, 16, 40, 88, 227, 0];
+// Ten hues evenly distributed across the wheel for maximum distinctiveness
+// (azure, amber, sage, violet, coral, chartreuse, teal, indigo, lime, mauve)
+const DOMAIN_HUES = [210, 35, 145, 290, 5, 65, 180, 250, 105, 320];
 
 function hslToHex(h, s, l) {
   s /= 100;
@@ -126,9 +127,9 @@ export function buildColorMap(siteKeys) {
   const colorMap = {};
   sortedDomains.forEach((domain, di) => {
     const hue = DOMAIN_HUES[di % DOMAIN_HUES.length];
-    colorMap[domain] = hslToHex(hue, 75, 45);
+    colorMap[domain] = hslToHex(hue, 48, 52);
     domainGroups.get(domain).slice().sort().forEach((key, ki) => {
-      colorMap[key] = hslToHex(hue, 75, 38 + (ki % 4) * 10);
+      colorMap[key] = hslToHex(hue, 48, 48 + (ki % 4) * 7);
     });
   });
   return colorMap;
