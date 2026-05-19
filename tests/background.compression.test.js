@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { encodeBlobContent, decodeBlobContent } from "../src/background/compression.mjs";
+import { encodeBlobContent, decodeBlobContent } from "../src/background/storage/compression.mjs";
 
 const encoder = new TextEncoder();
 

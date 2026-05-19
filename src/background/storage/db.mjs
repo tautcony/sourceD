@@ -12,7 +12,7 @@ import {
   rebuildIndexes,
   refreshBadgeForActiveTab,
   state,
-} from "./shared.mjs";
+} from "../shared.mjs";
 import { decodeBlobContent } from "./compression.mjs";
 
 export function getDb() {

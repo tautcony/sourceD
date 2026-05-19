@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import * as dbModule from "../src/background/db.mjs";
+import * as dbModule from "../src/background/storage/db.mjs";
 import { state } from "../src/background/shared.mjs";
 
 function requestStub() {

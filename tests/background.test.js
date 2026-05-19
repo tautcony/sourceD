@@ -65,9 +65,9 @@ describe("background runtime regressions", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.restoreAllMocks();
-    vi.doUnmock("../src/background/storage.mjs");
-    vi.doUnmock("../src/background/storage-compaction.mjs");
-    vi.doUnmock("../src/background/sessions.mjs");
+    vi.doUnmock("../src/background/storage/index.mjs");
+    vi.doUnmock("../src/background/storage/compaction.mjs");
+    vi.doUnmock("../src/background/sessions/index.mjs");
   });
 
   it("does not register request listeners before settings finish loading", async () => {
@@ -80,7 +80,7 @@ describe("background runtime regressions", () => {
     }));
     const ensureStorageReady = vi.fn(() => Promise.resolve());
 
-    vi.doMock("../src/background/storage.mjs", () => ({
+    vi.doMock("../src/background/storage/index.mjs", () => ({
       broadcastSummary: vi.fn(),
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
@@ -101,13 +101,13 @@ describe("background runtime regressions", () => {
       totalStorageBytes: vi.fn(() => 0),
     }));
 
-    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+    vi.doMock("../src/background/storage/compaction.mjs", () => ({
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
       runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
     }));
 
-    vi.doMock("../src/background/sessions.mjs", () => ({
+    vi.doMock("../src/background/sessions/index.mjs", () => ({
       cleanupTabSession: vi.fn(),
       fetchSourceMap: vi.fn(),
       getOrCreateSession: vi.fn(),
@@ -116,7 +116,7 @@ describe("background runtime regressions", () => {
       retryFailedMapFetch: vi.fn(),
     }));
 
-    const runtime = await import("../src/background/runtime.mjs");
+    const runtime = await import("../src/background/runtime/index.mjs");
     const initPromise = runtime.initializeRuntime();
 
     expect(chrome.webRequest.onBeforeRequest.addListener).not.toHaveBeenCalled();
@@ -131,7 +131,7 @@ describe("background runtime regressions", () => {
     const { chrome } = createChromeMock();
     globalThis.chrome = chrome;
 
-    vi.doMock("../src/background/storage.mjs", () => ({
+    vi.doMock("../src/background/storage/index.mjs", () => ({
       broadcastSummary: vi.fn(),
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
@@ -152,13 +152,13 @@ describe("background runtime regressions", () => {
       totalStorageBytes: vi.fn(() => 0),
     }));
 
-    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+    vi.doMock("../src/background/storage/compaction.mjs", () => ({
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
       runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
     }));
 
-    vi.doMock("../src/background/sessions.mjs", () => ({
+    vi.doMock("../src/background/sessions/index.mjs", () => ({
       cleanupTabSession: vi.fn(),
       fetchSourceMap: vi.fn(),
       getOrCreateSession: vi.fn(),
@@ -167,7 +167,7 @@ describe("background runtime regressions", () => {
       retryFailedMapFetch: vi.fn(),
     }));
 
-    const runtime = await import("../src/background/runtime.mjs");
+    const runtime = await import("../src/background/runtime/index.mjs");
     await expect(runtime.initializeRuntime()).rejects.toThrow("settings exploded");
     expect(chrome.webRequest.onBeforeRequest.addListener).not.toHaveBeenCalled();
   });
@@ -183,8 +183,8 @@ describe("background runtime regressions", () => {
     const removeVersionsFromIndexes = vi.fn();
     const broadcastSummary = vi.fn();
 
-    vi.doMock("../src/background/storage.mjs", async () => {
-      const actual = await vi.importActual("../src/background/storage.mjs");
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
       return {
         ...actual,
         broadcastSummary,
@@ -206,13 +206,13 @@ describe("background runtime regressions", () => {
       };
     });
 
-    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+    vi.doMock("../src/background/storage/compaction.mjs", () => ({
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
       runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
     }));
 
-    vi.doMock("../src/background/sessions.mjs", () => ({
+    vi.doMock("../src/background/sessions/index.mjs", () => ({
       cleanupTabSession: vi.fn(),
       fetchSourceMap: vi.fn(),
       getOrCreateSession: vi.fn(),
@@ -221,7 +221,7 @@ describe("background runtime regressions", () => {
       retryFailedMapFetch: vi.fn(),
     }));
 
-    const runtime = await import("../src/background/runtime.mjs");
+    const runtime = await import("../src/background/runtime/index.mjs");
     const shared = await import("../src/background/shared.mjs");
 
     runtime.registerRuntimeListeners();
@@ -267,7 +267,7 @@ describe("background runtime regressions", () => {
     const { chrome, listeners } = createChromeMock();
     globalThis.chrome = chrome;
 
-    vi.doMock("../src/background/storage.mjs", () => ({
+    vi.doMock("../src/background/storage/index.mjs", () => ({
       broadcastSummary: vi.fn(),
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
@@ -288,13 +288,13 @@ describe("background runtime regressions", () => {
       totalStorageBytes: vi.fn(() => 12),
     }));
 
-    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+    vi.doMock("../src/background/storage/compaction.mjs", () => ({
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
       runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
     }));
 
-    vi.doMock("../src/background/sessions.mjs", () => ({
+    vi.doMock("../src/background/sessions/index.mjs", () => ({
       cleanupTabSession: vi.fn(),
       fetchSourceMap: vi.fn(),
       getOrCreateSession: vi.fn(),
@@ -317,7 +317,7 @@ describe("background runtime regressions", () => {
     };
     shared.state.versionsByPage = { "https://example.com/app": ["v1"] };
 
-    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
+    await import("../src/background/runtime/index.mjs").then((mod) => mod.registerRuntimeListeners());
     const sendResponse = vi.fn();
 
     const keepOpen = listeners.onMessage({ action: "getPopupState", pageUrl: "https://example.com/app#hash" }, {}, sendResponse);
@@ -360,7 +360,7 @@ describe("background runtime regressions", () => {
       ],
     }));
 
-    vi.doMock("../src/background/storage.mjs", () => ({
+    vi.doMock("../src/background/storage/index.mjs", () => ({
       broadcastSummary,
       currentSettings: vi.fn(() => ({ detectionEnabled: true })),
       deletePageHistoryAndSessions,
@@ -379,13 +379,13 @@ describe("background runtime regressions", () => {
       totalStorageBytes: vi.fn(() => 99),
     }));
 
-    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+    vi.doMock("../src/background/storage/compaction.mjs", () => ({
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: true, summary: "Removed 1 legacy data tables", removedTables: ["sourceMaps"] })),
       compactStorageData,
       runCleanupTasks,
     }));
 
-    vi.doMock("../src/background/sessions.mjs", () => ({
+    vi.doMock("../src/background/sessions/index.mjs", () => ({
       cleanupTabSession: vi.fn(),
       fetchSourceMap: vi.fn(),
       getOrCreateSession: vi.fn(),
@@ -398,7 +398,7 @@ describe("background runtime regressions", () => {
     shared.state.versionIndex = { v1: { id: "v1", lastSeenAt: "2026-01-01T00:00:00.000Z" } };
     shared.state.versionsByPage = { "https://example.com/app": ["v1"] };
 
-    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
+    await import("../src/background/runtime/index.mjs").then((mod) => mod.registerRuntimeListeners());
 
     const dashboardResponse = vi.fn();
     listeners.onMessage({ action: "getDashboardData" }, {}, dashboardResponse);
@@ -480,7 +480,7 @@ describe("background runtime regressions", () => {
     const { chrome, listeners } = createChromeMock();
     globalThis.chrome = chrome;
 
-    vi.doMock("../src/background/storage.mjs", () => ({
+    vi.doMock("../src/background/storage/index.mjs", () => ({
       broadcastSummary: vi.fn(),
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
@@ -518,7 +518,7 @@ describe("background runtime regressions", () => {
       totalStorageBytes: vi.fn(() => 0),
     }));
 
-    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+    vi.doMock("../src/background/storage/compaction.mjs", () => ({
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
       runCleanupTasks: vi.fn()
@@ -540,7 +540,7 @@ describe("background runtime regressions", () => {
         }),
     }));
 
-    vi.doMock("../src/background/sessions.mjs", () => ({
+    vi.doMock("../src/background/sessions/index.mjs", () => ({
       cleanupTabSession: vi.fn(),
       fetchSourceMap: vi.fn(),
       getOrCreateSession: vi.fn(),
@@ -553,7 +553,7 @@ describe("background runtime regressions", () => {
     shared.state.versionIndex = {};
     shared.state.versionsByPage = {};
 
-    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
+    await import("../src/background/runtime/index.mjs").then((mod) => mod.registerRuntimeListeners());
 
     const cleanupResponse = vi.fn();
     listeners.onMessage({ action: "cleanupData" }, {}, cleanupResponse);
@@ -604,7 +604,7 @@ describe("background runtime regressions", () => {
     const { chrome, listeners } = createChromeMock();
     globalThis.chrome = chrome;
 
-    vi.doMock("../src/background/storage.mjs", () => ({
+    vi.doMock("../src/background/storage/index.mjs", () => ({
       broadcastSummary: vi.fn(),
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
@@ -625,13 +625,13 @@ describe("background runtime regressions", () => {
       totalStorageBytes: vi.fn(() => 0),
     }));
 
-    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+    vi.doMock("../src/background/storage/compaction.mjs", () => ({
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
       runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
     }));
 
-    vi.doMock("../src/background/sessions.mjs", () => ({
+    vi.doMock("../src/background/sessions/index.mjs", () => ({
       cleanupTabSession: vi.fn(),
       fetchSourceMap: vi.fn(),
       getOrCreateSession: vi.fn(),
@@ -640,7 +640,7 @@ describe("background runtime regressions", () => {
       retryFailedMapFetch: vi.fn(),
     }));
 
-    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
+    await import("../src/background/runtime/index.mjs").then((mod) => mod.registerRuntimeListeners());
 
     const sendResponse = vi.fn();
     const keepOpen = listeners.onMessage({ action: "updateSettings", settings: { detectionEnabled: false } }, {}, sendResponse);
@@ -658,7 +658,7 @@ describe("background runtime regressions", () => {
 
     chrome.tabs.get = vi.fn((tabId, cb) => cb({ id: tabId, url: "https://example.com/app", title: "Example" }));
 
-    vi.doMock("../src/background/storage.mjs", () => ({
+    vi.doMock("../src/background/storage/index.mjs", () => ({
       broadcastSummary: vi.fn(),
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
@@ -679,13 +679,13 @@ describe("background runtime regressions", () => {
       totalStorageBytes: vi.fn(() => 0),
     }));
 
-    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+    vi.doMock("../src/background/storage/compaction.mjs", () => ({
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
       runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
     }));
 
-    vi.doMock("../src/background/sessions.mjs", () => ({
+    vi.doMock("../src/background/sessions/index.mjs", () => ({
       cleanupTabSession: vi.fn(),
       fetchSourceMap,
       getOrCreateSession,
@@ -694,7 +694,7 @@ describe("background runtime regressions", () => {
       retryFailedMapFetch: vi.fn(),
     }));
 
-    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
+    await import("../src/background/runtime/index.mjs").then((mod) => mod.registerRuntimeListeners());
 
     listeners.onBeforeRequest({ type: "script", url: "https://cdn.example.com/app.mjs", tabId: 7 });
     listeners.onBeforeRequest({ type: "script", url: "https://cdn.example.com/assets/runtime", tabId: 7 });
@@ -708,7 +708,7 @@ describe("background runtime regressions", () => {
     globalThis.chrome = chrome;
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    vi.doMock("../src/background/storage.mjs", () => ({
+    vi.doMock("../src/background/storage/index.mjs", () => ({
       broadcastSummary: vi.fn(),
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
@@ -729,13 +729,13 @@ describe("background runtime regressions", () => {
       totalStorageBytes: vi.fn(() => 0),
     }));
 
-    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+    vi.doMock("../src/background/storage/compaction.mjs", () => ({
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
       runCleanupTasks: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
     }));
 
-    vi.doMock("../src/background/sessions.mjs", () => ({
+    vi.doMock("../src/background/sessions/index.mjs", () => ({
       cleanupTabSession: vi.fn(),
       fetchSourceMap: vi.fn(),
       getOrCreateSession: vi.fn(),
@@ -747,7 +747,7 @@ describe("background runtime regressions", () => {
     const shared = await import("../src/background/shared.mjs");
     shared.state.versionIndex = { v1: { id: "v1", lastSeenAt: "2026-01-01T00:00:00.000Z" } };
 
-    await import("../src/background/runtime.mjs").then((mod) => mod.registerRuntimeListeners());
+    await import("../src/background/runtime/index.mjs").then((mod) => mod.registerRuntimeListeners());
 
     const filesResponse = vi.fn();
     listeners.onMessage({ action: "getVersionFiles", versionId: "v1" }, {}, filesResponse);
@@ -785,14 +785,14 @@ describe("session persistence regressions", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.restoreAllMocks();
-    vi.doUnmock("../src/background/storage.mjs");
-    vi.doUnmock("../src/background/storage-compaction.mjs");
-    vi.doUnmock("../src/background/sessions.mjs");
+    vi.doUnmock("../src/background/storage/index.mjs");
+    vi.doUnmock("../src/background/storage/compaction.mjs");
+    vi.doUnmock("../src/background/sessions/index.mjs");
   });
 
   it("refreshes lastSeenAt when reusing an existing matching version", async () => {
-    vi.doMock("../src/background/storage.mjs", async () => {
-      const actual = await vi.importActual("../src/background/storage.mjs");
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
       return {
         ...actual,
         broadcastSummary: vi.fn(),
@@ -803,11 +803,11 @@ describe("session persistence regressions", () => {
       };
     });
 
-    vi.doUnmock("../src/background/sessions.mjs");
+    vi.doUnmock("../src/background/sessions/index.mjs");
 
     const shared = await import("../src/background/shared.mjs");
-    const sessions = await import("../src/background/sessions.mjs");
-    const storage = await import("../src/background/storage.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
     const mapContent = "hello world";
     const mapHash = await shared.hashString(mapContent);
 
@@ -855,8 +855,8 @@ describe("session persistence regressions", () => {
   });
 
   it("reuses the smallest existing superset instead of creating a subset-only version", async () => {
-    vi.doMock("../src/background/storage.mjs", async () => {
-      const actual = await vi.importActual("../src/background/storage.mjs");
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
       return {
         ...actual,
         broadcastSummary: vi.fn(),
@@ -867,11 +867,11 @@ describe("session persistence regressions", () => {
       };
     });
 
-    vi.doUnmock("../src/background/sessions.mjs");
+    vi.doUnmock("../src/background/sessions/index.mjs");
 
     const shared = await import("../src/background/shared.mjs");
-    const sessions = await import("../src/background/sessions.mjs");
-    const storage = await import("../src/background/storage.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
     const mapAHash = await shared.hashString("map-a");
     const mapBHash = await shared.hashString("map-b");
     const mapCHash = await shared.hashString("map-c");
@@ -937,8 +937,8 @@ describe("session persistence regressions", () => {
   });
 
   it("groups different query strings under the same page while still creating distinct versions when files differ", async () => {
-    vi.doMock("../src/background/storage.mjs", async () => {
-      const actual = await vi.importActual("../src/background/storage.mjs");
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
       return {
         ...actual,
         broadcastSummary: vi.fn(),
@@ -949,11 +949,11 @@ describe("session persistence regressions", () => {
       };
     });
 
-    vi.doUnmock("../src/background/sessions.mjs");
+    vi.doUnmock("../src/background/sessions/index.mjs");
 
     const shared = await import("../src/background/shared.mjs");
-    const sessions = await import("../src/background/sessions.mjs");
-    const storage = await import("../src/background/storage.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
 
     shared.state.versionIndex = {};
     shared.state.versionsByPage = {};
@@ -987,8 +987,8 @@ describe("session persistence regressions", () => {
   });
 
   it("does not leave a new version in memory when persistence fails", async () => {
-    vi.doMock("../src/background/storage.mjs", async () => {
-      const actual = await vi.importActual("../src/background/storage.mjs");
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
       return {
         ...actual,
         broadcastSummary: vi.fn(),
@@ -999,10 +999,10 @@ describe("session persistence regressions", () => {
       };
     });
 
-    vi.doUnmock("../src/background/sessions.mjs");
+    vi.doUnmock("../src/background/sessions/index.mjs");
 
     const shared = await import("../src/background/shared.mjs");
-    const sessions = await import("../src/background/sessions.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
 
     shared.state.versionIndex = {};
     shared.state.versionsByPage = {};
@@ -1027,8 +1027,8 @@ describe("session persistence regressions", () => {
   });
 
   it("keeps a new version visible in memory when post-persist pruning fails", async () => {
-    vi.doMock("../src/background/storage.mjs", async () => {
-      const actual = await vi.importActual("../src/background/storage.mjs");
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
       return {
         ...actual,
         broadcastSummary: vi.fn(),
@@ -1040,7 +1040,7 @@ describe("session persistence regressions", () => {
     });
 
     const shared = await import("../src/background/shared.mjs");
-    const sessions = await import("../src/background/sessions.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
 
     shared.state.versionIndex = {};
     shared.state.versionsByPage = {};
@@ -1075,8 +1075,8 @@ describe("session persistence regressions", () => {
       };
     });
 
-    vi.doMock("../src/background/storage.mjs", async () => {
-      const actual = await vi.importActual("../src/background/storage.mjs");
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
       return {
         ...actual,
         broadcastSummary: vi.fn(),
@@ -1087,7 +1087,7 @@ describe("session persistence regressions", () => {
       };
     });
 
-    const sessions = await import("../src/background/sessions.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
 
     await expect(sessions.buildSessionArtifacts({
       pageUrl: "https://example.com/app",
@@ -1101,8 +1101,8 @@ describe("session persistence regressions", () => {
   it("defers session persistence while storage compaction is in progress", async () => {
     vi.useFakeTimers();
 
-    vi.doMock("../src/background/storage.mjs", async () => {
-      const actual = await vi.importActual("../src/background/storage.mjs");
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
       return {
         ...actual,
         broadcastSummary: vi.fn(),
@@ -1114,8 +1114,8 @@ describe("session persistence regressions", () => {
     });
 
     const shared = await import("../src/background/shared.mjs");
-    const sessions = await import("../src/background/sessions.mjs");
-    const storage = await import("../src/background/storage.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
 
     shared.state.storageCompactionInProgress = true;
     shared.state.versionIndex = {};
@@ -1152,13 +1152,13 @@ describe("storage compaction regressions", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.restoreAllMocks();
-    vi.doUnmock("../src/background/storage.mjs");
-    vi.doUnmock("../src/background/storage-compaction.mjs");
-    vi.doUnmock("../src/background/sessions.mjs");
+    vi.doUnmock("../src/background/storage/index.mjs");
+    vi.doUnmock("../src/background/storage/compaction.mjs");
+    vi.doUnmock("../src/background/sessions/index.mjs");
   });
 
   it("keeps partially recoverable versions during compaction", async () => {
-    const storageCompaction = await import("../src/background/storage-compaction.mjs");
+    const storageCompaction = await import("../src/background/storage/compaction.mjs");
 
     const meta = {
       id: "v1",
@@ -1247,7 +1247,7 @@ describe("storage compaction regressions", () => {
       }),
     };
 
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
 
     await expect(storage.getDb()).rejects.toThrow("indexedDB open blocked");
   });
@@ -1268,7 +1268,7 @@ describe("fetchSourceMap regressions", () => {
     }));
 
     const shared = await import("../src/background/shared.mjs");
-    const sessions = await import("../src/background/sessions.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
     const callback = vi.fn();
 
     sessions.fetchSourceMap("https://example.com/app.js", callback);
@@ -1294,7 +1294,7 @@ describe("fetchSourceMap regressions", () => {
       });
     });
 
-    const sessions = await import("../src/background/sessions.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
     const callback = vi.fn();
 
     sessions.fetchSourceMap("https://example.com/app.js", callback);
@@ -1313,7 +1313,7 @@ describe("fetchSourceMap regressions", () => {
       text: () => Promise.resolve(`//# sourceMappingURL=data:application/json;base64,${base64}`),
     }));
 
-    const sessions = await import("../src/background/sessions.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
     const callback = vi.fn();
 
     sessions.fetchSourceMap("https://example.com/app.js", callback);
@@ -1338,7 +1338,7 @@ describe("fetchSourceMap regressions", () => {
       });
     });
 
-    const sessions = await import("../src/background/sessions.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
     const callbackA = vi.fn();
     const callbackB = vi.fn();
 

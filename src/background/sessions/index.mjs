@@ -10,7 +10,7 @@ import {
   state,
   blobStoreKey,
   hashString,
-} from "./shared.mjs";
+} from "../shared.mjs";
 import {
   broadcastSummary,
   currentSettings,
@@ -18,8 +18,8 @@ import {
   persistVersionState,
   prunePageHistory,
   touchVersionMeta,
-} from "./storage.mjs";
-import { createSourceMapFetcher, fetchTextWithLimits } from "./sourceMaps.mjs";
+} from "../storage/index.mjs";
+import { createSourceMapFetcher, fetchTextWithLimits } from "./fetch.mjs";
 
 export async function buildSessionArtifacts(session) {
   const siteKey = pageSiteKey(session.pageUrl);

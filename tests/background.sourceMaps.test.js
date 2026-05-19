@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { base64ToUtf8, createSourceMapFetcher, fetchTextWithLimits, resolveSourceMapUrl } from "../src/background/sourceMaps.mjs";
+import { base64ToUtf8, createSourceMapFetcher, fetchTextWithLimits, resolveSourceMapUrl } from "../src/background/sessions/fetch.mjs";
 
 describe("background sourceMaps", () => {
   beforeEach(() => {

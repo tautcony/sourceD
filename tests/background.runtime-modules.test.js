@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createPopupPortHandler, createRuntimeMessageHandler, createWebRequestHandler } from "../src/background/runtime-handlers.mjs";
+import { createPopupPortHandler, createRuntimeMessageHandler, createWebRequestHandler } from "../src/background/runtime/handlers.mjs";
 
 async function flushPromises() {
   await Promise.resolve();
@@ -666,7 +666,7 @@ describe("background runtime wiring and entry", () => {
       action: { setBadgeText: vi.fn() },
     };
 
-    vi.doMock("../src/background/storage.mjs", () => ({
+    vi.doMock("../src/background/storage/index.mjs", () => ({
       broadcastSummary: vi.fn(),
       cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
       compactStorageData: vi.fn(),
@@ -689,7 +689,7 @@ describe("background runtime wiring and entry", () => {
     }));
     const cleanupTabSession = vi.fn();
     const scheduleSessionPersist = vi.fn();
-    vi.doMock("../src/background/sessions.mjs", () => ({
+    vi.doMock("../src/background/sessions/index.mjs", () => ({
       cleanupTabSession,
       fetchSourceMap: vi.fn(),
       getOrCreateSession: vi.fn(),
@@ -703,7 +703,7 @@ describe("background runtime wiring and entry", () => {
     const refreshBadgeForActiveTab = vi.spyOn(shared, "refreshBadgeForActiveTab").mockImplementation(() => {});
     shared.state.tabSessions = { 1: { title: "old" }, 2: { title: "x" } };
 
-    const runtime = await import("../src/background/runtime.mjs");
+    const runtime = await import("../src/background/runtime/index.mjs");
     runtime.registerRuntimeListeners();
 
     listeners.removed(1);
@@ -735,7 +735,7 @@ describe("background runtime wiring and entry", () => {
   it("logs init failures from background entry", async () => {
     vi.resetModules();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.doMock("../src/background/runtime.mjs", () => ({
+    vi.doMock("../src/background/runtime/index.mjs", () => ({
       initializeRuntime: vi.fn(() => Promise.reject(new Error("init exploded"))),
     }));
 

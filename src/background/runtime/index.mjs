@@ -6,7 +6,7 @@ import {
   shouldIgnoreAnalysisForUrl,
   state,
   versionLabel,
-} from "./shared.mjs";
+} from "../shared.mjs";
 import {
   broadcastSummary,
   currentSettings,
@@ -24,12 +24,12 @@ import {
   saveSettings,
   summarizePages,
   totalStorageBytes,
-} from "./storage.mjs";
+} from "../storage/index.mjs";
 import {
   cleanupLegacyDataTables,
   compactStorageData,
   runCleanupTasks,
-} from "./storage-compaction.mjs";
+} from "../storage/compaction.mjs";
 import {
   cleanupTabSession,
   fetchSourceMap,
@@ -37,12 +37,12 @@ import {
   isValidSourceMap,
   retryFailedMapFetch,
   scheduleSessionPersist,
-} from "./sessions.mjs";
+} from "../sessions/index.mjs";
 import {
   createPopupPortHandler,
   createRuntimeMessageHandler,
   createWebRequestHandler,
-} from "./runtime-handlers.mjs";
+} from "./handlers.mjs";
 
 export function registerRuntimeListeners() {
   const handleWebRequest = createWebRequestHandler({

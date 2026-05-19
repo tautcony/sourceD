@@ -11,7 +11,7 @@ import {
   state,
   buildSignatureFromRefs,
   hashString,
-} from "./shared.mjs";
+} from "../shared.mjs";
 import {
   ensureStorageReady,
   getDb,
@@ -26,7 +26,7 @@ import {
   storedBlobBytes,
   uniqueBlobId,
   withStoredByteSize,
-} from "./storage-utils.mjs";
+} from "./utils.mjs";
 
 // ---------------------------------------------------------------------------
 // Constants

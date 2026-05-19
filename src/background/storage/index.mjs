@@ -17,7 +17,7 @@ import {
   versionLabel,
   buildSignatureFromRefs,
   findBestVersionMatch,
-} from "./shared.mjs";
+} from "../shared.mjs";
 import {
   ensureStorageReady,
   loadBlobContentsRaw,
@@ -28,7 +28,7 @@ import {
   storedBlobBytes,
   withStoredByteSize,
   prepareBlobMapForStorage,
-} from "./storage-utils.mjs";
+} from "./utils.mjs";
 export {
   ensureStorageReady,
   getDb,

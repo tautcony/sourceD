@@ -291,8 +291,8 @@ describe("background session helpers", () => {
   });
 
   it("covers version-owned update and session lifecycle helpers", async () => {
-    vi.doMock("../src/background/storage.mjs", async () => {
-      const actual = await vi.importActual("../src/background/storage.mjs");
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
       return {
         ...actual,
         broadcastSummary: vi.fn(),
@@ -304,8 +304,8 @@ describe("background session helpers", () => {
     });
 
     const shared = await import("../src/background/shared.mjs");
-    const sessions = await import("../src/background/sessions.mjs");
-    const storage = await import("../src/background/storage.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
 
     shared.state.versionIndex = {
       owned: {
@@ -376,7 +376,7 @@ describe("background session helpers", () => {
   it("covers fetchSourceMap non-happy branches and source map validation", async () => {
     vi.useFakeTimers();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const sessions = await import("../src/background/sessions.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
 
     globalThis.fetch = vi.fn(() => Promise.resolve({
       ok: false,
@@ -439,8 +439,8 @@ describe("background session helpers", () => {
 
   it("covers new-version persist without cleanup and scheduled warning paths", async () => {
     vi.useFakeTimers();
-    vi.doMock("../src/background/storage.mjs", async () => {
-      const actual = await vi.importActual("../src/background/storage.mjs");
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
       return {
         ...actual,
         broadcastSummary: vi.fn(),
@@ -453,8 +453,8 @@ describe("background session helpers", () => {
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const shared = await import("../src/background/shared.mjs");
-    const sessions = await import("../src/background/sessions.mjs");
-    const storage = await import("../src/background/storage.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
 
     chrome.action.setBadgeText = vi.fn();
     shared.state.versionIndex = {};
@@ -506,8 +506,8 @@ describe("background session helpers", () => {
   });
 
   it("covers owned-version updates when auto cleanup is disabled", async () => {
-    vi.doMock("../src/background/storage.mjs", async () => {
-      const actual = await vi.importActual("../src/background/storage.mjs");
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
       return {
         ...actual,
         broadcastSummary: vi.fn(),
@@ -519,8 +519,8 @@ describe("background session helpers", () => {
     });
 
     const shared = await import("../src/background/shared.mjs");
-    const sessions = await import("../src/background/sessions.mjs");
-    const storage = await import("../src/background/storage.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
 
     shared.state.versionIndex = {
       owned: {
@@ -552,8 +552,8 @@ describe("background session helpers", () => {
   });
 
   it("calls prunePageHistory on new version when autoCleanup is enabled", async () => {
-    vi.doMock("../src/background/storage.mjs", async () => {
-      const actual = await vi.importActual("../src/background/storage.mjs");
+    vi.doMock("../src/background/storage/index.mjs", async () => {
+      const actual = await vi.importActual("../src/background/storage/index.mjs");
       return {
         ...actual,
         broadcastSummary: vi.fn(),
@@ -565,8 +565,8 @@ describe("background session helpers", () => {
     });
 
     const shared = await import("../src/background/shared.mjs");
-    const sessions = await import("../src/background/sessions.mjs");
-    const storage = await import("../src/background/storage.mjs");
+    const sessions = await import("../src/background/sessions/index.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
 
     chrome.action.setBadgeText = vi.fn();
     shared.state.versionIndex = {};
@@ -594,7 +594,7 @@ describe("background storage helpers", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.restoreAllMocks();
-    vi.doUnmock("../src/background/storage.mjs");
+    vi.doUnmock("../src/background/storage/index.mjs");
     if (!chrome.storage) chrome.storage = {};
     if (!chrome.storage.local) chrome.storage.local = {};
     chrome.storage.local.get = vi.fn((_keys, cb) => cb({ settings: { retentionDays: 7 } }));
@@ -602,7 +602,7 @@ describe("background storage helpers", () => {
   });
 
   it("loads and saves settings with defaults", async () => {
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
     const settings = await storage.loadSettings();
     expect(settings).toEqual({
       retentionDays: 7,
@@ -629,7 +629,7 @@ describe("background storage helpers", () => {
 
   it("normalizes ignored domain settings on load and save", async () => {
     chrome.storage.local.get = vi.fn((_keys, cb) => cb({ settings: { ignoredDomains: [" Example.com ", "example.com", "api.example.com/path"] } }));
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
 
     const settings = await storage.loadSettings();
     expect(settings.ignoredDomains).toEqual(["api.example.com", "example.com"]);
@@ -644,7 +644,7 @@ describe("background storage helpers", () => {
   });
 
   it("rejects settings load/save when chrome.storage reports runtime.lastError", async () => {
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
 
     chrome.storage.local.get = vi.fn((_keys, cb) => {
       chrome.runtime.lastError = { message: "get exploded" };
@@ -670,7 +670,7 @@ describe("background storage helpers", () => {
 
   it("covers import, summary, prune, clear and delete helpers", async () => {
     const shared = await import("../src/background/shared.mjs");
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
     const db = createInMemoryDb();
 
     chrome.tabs.query = vi.fn((_opts, cb) => cb([]));
@@ -821,7 +821,7 @@ describe("background storage helpers", () => {
   });
 
   it("covers raw storage readers and blob fallback helpers", async () => {
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
@@ -903,9 +903,9 @@ describe("background storage helpers", () => {
   });
 
   it("stores large blobs with compression metadata and reads them back transparently", async () => {
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
     const shared = await import("../src/background/shared.mjs");
-    const dbModule = await import("../src/background/db.mjs");
+    const dbModule = await import("../src/background/storage/db.mjs");
     const db = createInMemoryDb();
 
     shared.state.dbPromise = null;
@@ -961,8 +961,8 @@ describe("background storage helpers", () => {
   });
 
   it("covers index removal and compaction stats", async () => {
-    const storage = await import("../src/background/storage.mjs");
-    const storageCompaction = await import("../src/background/storage-compaction.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
+    const storageCompaction = await import("../src/background/storage/compaction.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
@@ -1042,7 +1042,7 @@ describe("background storage helpers", () => {
   });
 
   it("upgrades old hashed refs and version signatures during compaction", async () => {
-    const storageCompaction = await import("../src/background/storage-compaction.mjs");
+    const storageCompaction = await import("../src/background/storage/compaction.mjs");
 
     const meta = {
       id: "legacy",
@@ -1106,8 +1106,8 @@ describe("background storage helpers", () => {
   });
 
   it("merges legacy query variants and redundant subset versions during compaction", async () => {
-    const storage = await import("../src/background/storage.mjs");
-    const storageCompaction = await import("../src/background/storage-compaction.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
+    const storageCompaction = await import("../src/background/storage/compaction.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
@@ -1190,8 +1190,8 @@ describe("background storage helpers", () => {
   });
 
   it("compaction rechecks storedByteSize from compressed blobs", async () => {
-    const storage = await import("../src/background/storage.mjs");
-    const storageCompaction = await import("../src/background/storage-compaction.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
+    const storageCompaction = await import("../src/background/storage/compaction.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
@@ -1250,8 +1250,8 @@ describe("background storage helpers", () => {
   });
 
   it("covers persist/delete refcount paths, compaction builder branches, and session clearing", async () => {
-    const storage = await import("../src/background/storage.mjs");
-    const storageCompaction = await import("../src/background/storage-compaction.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
+    const storageCompaction = await import("../src/background/storage/compaction.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
@@ -1398,7 +1398,7 @@ describe("background storage helpers", () => {
   });
 
   it("covers storage summary branches and import without auto cleanup", async () => {
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
     const shared = await import("../src/background/shared.mjs");
     const refreshBadgeForActiveTab = vi.spyOn(shared, "refreshBadgeForActiveTab").mockImplementation(() => {});
     const prunePageHistory = vi.spyOn(storage, "prunePageHistory").mockResolvedValue();
@@ -1474,7 +1474,7 @@ describe("background storage helpers", () => {
       };
     });
 
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
@@ -1514,7 +1514,7 @@ describe("background storage helpers", () => {
   });
 
   it("reports legacy table removal only once per actual cleanup", async () => {
-    const storageCompaction = await import("../src/background/storage-compaction.mjs");
+    const storageCompaction = await import("../src/background/storage/compaction.mjs");
     const shared = await import("../src/background/shared.mjs");
 
     shared.state.dbPromise = Promise.resolve({
@@ -1556,7 +1556,7 @@ describe("background storage helpers", () => {
       };
     });
 
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
@@ -1597,7 +1597,7 @@ describe("background storage helpers", () => {
   });
 
   it("runCleanupTasks records failed steps when DB is unavailable", async () => {
-    const storageCompaction = await import("../src/background/storage-compaction.mjs");
+    const storageCompaction = await import("../src/background/storage/compaction.mjs");
     const shared = await import("../src/background/shared.mjs");
 
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -1632,7 +1632,7 @@ describe("background storage helpers", () => {
   });
 
   it("summarizePages, distributionSummary, totalStorageBytes use compressed mode when sizeDisplayMode is compressed", async () => {
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
     const shared = await import("../src/background/shared.mjs");
 
     shared.state.settings = {
@@ -1670,7 +1670,7 @@ describe("background storage helpers", () => {
   });
 
   it("loadVersionFiles sizeDisplayMode compressed and null blobId ref fallback", async () => {
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
@@ -1711,7 +1711,7 @@ describe("background storage helpers", () => {
   });
 
   it("storedBytesForRefs uses byteSize fallback when ref has no blobId and no storedByteSize", async () => {
-    const storage = await import("../src/background/storage.mjs");
+    const storage = await import("../src/background/storage/index.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
