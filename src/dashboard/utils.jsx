@@ -53,6 +53,20 @@ export function renderCleanupSummary(resp, fallbackError) {
   );
 }
 
+export function registrableDomain(siteKey) {
+  let hostname;
+  try {
+    hostname = new URL(siteKey).hostname.toLowerCase();
+  } catch {
+    hostname = String(siteKey || "").toLowerCase().split("/")[0].split("?")[0].split("#")[0];
+  }
+  if (!hostname) return siteKey || "";
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname) || hostname.startsWith("[")) return hostname;
+  const parts = hostname.split(".");
+  if (parts.length <= 2) return hostname;
+  return parts.slice(-2).join(".");
+}
+
 export function groupPagesByDomain(pages) {
   const buckets = {};
   pages.forEach((page) => {
@@ -79,4 +93,43 @@ export function groupPagesByDomain(pages) {
     })
     /* c8 ignore next */
     .sort((a, b) => new Date(b.lastSeenAt || 0) - new Date(a.lastSeenAt || 0));
+}
+
+// Ten well-spaced hues (blue, purple, cyan, green, magenta, volcano, gold, lime, geekblue, red)
+const DOMAIN_HUES = [210, 265, 183, 102, 330, 16, 40, 88, 227, 0];
+
+function hslToHex(h, s, l) {
+  s /= 100;
+  l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color).toString(16).padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+/**
+ * Build a unified color map for siteKeys and their registrable domains.
+ * Each eTLD+1 gets a unique hue family; subdomains within the same family
+ * share the hue but vary in lightness. Returns { [siteKey]: hex, [domain]: hex }.
+ */
+export function buildColorMap(siteKeys) {
+  const domainGroups = new Map();
+  siteKeys.forEach((key) => {
+    const rd = registrableDomain(key);
+    if (!domainGroups.has(rd)) domainGroups.set(rd, []);
+    domainGroups.get(rd).push(key);
+  });
+  const sortedDomains = Array.from(domainGroups.keys()).sort();
+  const colorMap = {};
+  sortedDomains.forEach((domain, di) => {
+    const hue = DOMAIN_HUES[di % DOMAIN_HUES.length];
+    colorMap[domain] = hslToHex(hue, 75, 45);
+    domainGroups.get(domain).slice().sort().forEach((key, ki) => {
+      colorMap[key] = hslToHex(hue, 75, 38 + (ki % 4) * 10);
+    });
+  });
+  return colorMap;
 }

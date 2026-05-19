@@ -83,7 +83,7 @@ function mockDashboardData(data, extraHandlers = {}) {
 
 async function expandDomain(siteKey = longSiteKey) {
   const domainTitles = await screen.findAllByText((content) => content.includes(siteKey));
-  const domainTitle = domainTitles[0];
+  const domainTitle = domainTitles.find((el) => el.closest(".ant-collapse-header")) || domainTitles[0];
   fireEvent.click(domainTitle.closest(".ant-collapse-header"));
 }
 
@@ -1048,8 +1048,8 @@ describe("DashboardApp", () => {
     ];
     mockDashboardData({ pages: multiPages, totalVersions: 2, totalStorageBytes: 1536 });
     render(<DashboardApp />);
-    await screen.findByText((content) => content.includes(longSiteKey));
-    expect(screen.getByText((content) => content.includes("other-site.org"))).toBeInTheDocument();
+    await screen.findAllByText((content) => content.includes(longSiteKey));
+    expect(screen.getAllByText((content) => content.includes("other-site.org"))[0]).toBeInTheDocument();
   });
 
   // ─── Branch coverage: edge cases ─────────────────────────────────
@@ -1163,10 +1163,12 @@ describe("DashboardApp", () => {
     mockDashboardData({ pages: multiPages, totalVersions: 3, totalStorageBytes: 600 });
     render(<DashboardApp />);
     // Both domains should appear
-    await screen.findByText((c) => c.includes("alpha.com"));
-    expect(screen.getByText((c) => c.includes("beta.com"))).toBeInTheDocument();
+    await screen.findAllByText((c) => c.includes("alpha.com"));
+    expect(screen.getAllByText((c) => c.includes("beta.com"))[0]).toBeInTheDocument();
     // Expand alpha.com domain to see pages sorted by date
-    fireEvent.click(screen.getByText((c) => c.includes("alpha.com")).closest(".ant-collapse-header"));
+    const alphaEls = screen.getAllByText((c) => c.includes("alpha.com"));
+    const alphaEl = alphaEls.find((el) => el.closest(".ant-collapse-header")) || alphaEls[0];
+    fireEvent.click(alphaEl.closest(".ant-collapse-header"));
     await waitFor(() => {
       expect(screen.getAllByText("Page 1").length).toBeGreaterThan(0);
       expect(screen.getAllByText("Page 2").length).toBeGreaterThan(0);
@@ -1320,8 +1322,8 @@ describe("DashboardApp", () => {
     render(<DashboardApp />);
     // Sort comparators use versions[0]?.lastSeenAt || 0 and b.lastSeenAt || 0
     // Both sides are null here, covering the || 0 fallback
-    await screen.findByText((c) => c.includes("nulldate.com"));
-    expect(screen.getByText((c) => c.includes("othersite.com"))).toBeInTheDocument();
+    await screen.findAllByText((c) => c.includes("nulldate.com"));
+    expect(screen.getAllByText((c) => c.includes("othersite.com"))[0]).toBeInTheDocument();
   });
 
   it("falls back to en when getUILanguage returns empty", () => {

@@ -474,5 +474,9 @@
   "dashboardCleanup": {
     "message": "Optimize Storage",
     "description": "Dashboard cleanup button"
+  },
+  "dashboardDomainFilterLabel": {
+    "message": "Filter by domain",
+    "description": "Dashboard domain filter label"
   }
 }

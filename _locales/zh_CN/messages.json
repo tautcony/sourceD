@@ -474,5 +474,9 @@
   "dashboardCleanup": {
     "message": "优化数据存储",
     "description": "清理按钮"
+  },
+  "dashboardDomainFilterLabel": {
+    "message": "按主域名筛选",
+    "description": "历史面板域名筛选标签"
   }
 }

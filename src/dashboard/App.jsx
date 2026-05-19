@@ -26,10 +26,14 @@ import {
   formatShortDate,
   formatVersionTime,
   groupPagesByDomain,
+  registrableDomain,
   renderCleanupSummary,
+  buildColorMap,
 } from "./utils.jsx";
 
 const { Title, Text } = Typography;
+
+
 const defaultDashboardSettings = {
   retentionDays: 30,
   maxVersionsPerPage: 10,
@@ -200,6 +204,32 @@ function DashboardContent() {
 
   const groups = useMemo(() => groupPagesByDomain(pages), [pages]);
 
+  const domainOptions = useMemo(() => {
+    const seen = new Set();
+    groups.forEach((g) => {
+      const rd = registrableDomain(g.siteKey);
+      if (rd) seen.add(rd);
+    });
+    return Array.from(seen).sort();
+  }, [groups]);
+
+  const siteColorMap = useMemo(() =>
+    buildColorMap(groups.map((g) => g.siteKey)),
+  [groups]);
+
+  const [selectedDomains, setSelectedDomains] = useState([]);
+
+  const handleDomainTagToggle = useCallback((domain, checked) => {
+    setSelectedDomains((prev) =>
+      checked ? [...prev, domain] : prev.filter((d) => d !== domain),
+    );
+  }, []);
+
+  const filteredGroups = useMemo(() => {
+    if (!selectedDomains.length) return groups;
+    return groups.filter((g) => selectedDomains.includes(registrableDomain(g.siteKey)));
+  }, [groups, selectedDomains]);
+
   const stopHeaderAction = useCallback((event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -300,14 +330,14 @@ function DashboardContent() {
   }, []);
 
   const domainCollapseItems = useMemo(() => {
-    return groups.map((group) => ({
+    return filteredGroups.map((group) => ({
       key: group.siteKey,
       label: (
         <div data-site-key={group.siteKey}>
         <Flex justify="space-between" align="center" style={{ overflow: "hidden" }}>
           <Flex vertical gap={2} style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
             <Flex align="center" gap={8} style={{ minWidth: 0 }}>
-              <GlobalOutlined style={{ flexShrink: 0 }} />
+              <GlobalOutlined style={{ flexShrink: 0, color: siteColorMap[registrableDomain(group.siteKey)] }} />
               <Text strong ellipsis={{ tooltip: group.siteKey }}>{group.siteKey}</Text>
             </Flex>
             <Text type="secondary" style={{ fontSize: 12 }}>
@@ -413,7 +443,7 @@ function DashboardContent() {
         />
       ),
     }));
-  }, [activePageTabs, groups, handleDeletePage, handleDeleteSite, handleDeleteVersion, handlePageTabChange, effectiveLocale, settings]);
+  }, [activePageTabs, filteredGroups, handleDeletePage, handleDeleteSite, handleDeleteVersion, handlePageTabChange, effectiveLocale, settings, siteColorMap]);
 
   const handleLegendClick = useCallback((siteKey) => {
     setExpandedDomainKeys((prev) => {
@@ -491,7 +521,35 @@ function DashboardContent() {
           ) : !pages.length ? (
             <Empty description={i18nMessage("dashboardEmptyHistory")} />
           ) : (
-            <Collapse activeKey={expandedDomainKeys} onChange={handleCollapseChange} items={domainCollapseItems} />
+            <Flex vertical gap={12}>
+              {domainOptions.length > 1 && (
+                <Flex align="center" gap={8} wrap="wrap">
+                  <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
+                    {i18nMessage("dashboardDomainFilterLabel")}:
+                  </Text>
+                  {domainOptions.map((domain) => {
+                    const color = siteColorMap[domain];
+                    const isSelected = selectedDomains.includes(domain);
+                    const hasSelection = selectedDomains.length > 0;
+                    return (
+                      <Tag
+                        key={domain}
+                        color={isSelected || !hasSelection ? color : undefined}
+                        style={{
+                          cursor: "pointer",
+                          opacity: !hasSelection || isSelected ? 1 : 0.4,
+                          transition: "opacity 0.2s",
+                        }}
+                        onClick={() => handleDomainTagToggle(domain, !isSelected)}
+                      >
+                        {domain}
+                      </Tag>
+                    );
+                  })}
+                </Flex>
+              )}
+              <Collapse activeKey={expandedDomainKeys} onChange={handleCollapseChange} items={domainCollapseItems} />
+            </Flex>
           )}
         </Card>
 
@@ -505,7 +563,7 @@ function DashboardContent() {
           ) : !distribution.length ? (
             <Empty description={i18nMessage("dashboardEmptyDistribution")} />
           ) : (
-            <DistributionChart items={distribution} onLegendClick={handleLegendClick} />
+            <DistributionChart items={distribution} colorMap={siteColorMap} onLegendClick={handleLegendClick} />
           )}
         </Card>
 

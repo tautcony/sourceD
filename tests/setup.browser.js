@@ -109,6 +109,7 @@ globalThis.chrome = {
         dashboardDownloadVersion: "Download version",
         dashboardDeleteVersion: "Delete",
         dashboardCleanup: "Optimize Storage",
+        dashboardDomainFilterLabel: "Filter by domain",
         dashboardCleanupDone: `Abnormal data cleaned: ${substitutions?.[0] ?? ""} versions`,
         dashboardCleanupOptimized: `Storage optimized: ${substitutions?.[0] ?? ""} maps, ${substitutions?.[1] ?? ""} reclaimed`,
         dashboardCleanupNone: "No abnormal data found and no storage optimization was needed",

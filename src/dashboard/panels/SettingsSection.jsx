@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { App, Button, Card, Col, Divider, Flex, Form, Input, InputNumber, Row, Select, Space, Switch, Typography } from "antd";
+import { App, Button, Card, Col, Divider, Flex, Form, Input, InputNumber, Row, Select, Switch, Typography } from "antd";
 import { fileSizeIEC, i18nMessage, normalizeDomainFilterList } from "../../shared/utils.mjs";
 import { runtimeMessageError } from "../../shared/runtime-utils.js";
 
@@ -112,10 +112,7 @@ export default function SettingsSection({ settings, onReload }) {
                     name="fetchDelayMs"
                     extra={i18nMessage("dashboardSettingFetchDelayMsHelp")}
                   >
-                    <Space.Compact style={{ width: "100%" }}>
-                      <InputNumber min={0} max={5000} style={{ flex: 1 }} />
-                      <Input value="ms" disabled style={{ width: "auto" }} />
-                    </Space.Compact>
+                    <InputNumber min={0} max={5000} suffix="ms" style={{ width: "100%" }} />
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12}>
@@ -124,10 +121,7 @@ export default function SettingsSection({ settings, onReload }) {
                     name="fetchTimeoutMs"
                     extra={i18nMessage("dashboardSettingFetchTimeoutMsHelp")}
                   >
-                    <Space.Compact style={{ width: "100%" }}>
-                      <InputNumber min={500} max={120_000} style={{ flex: 1 }} />
-                      <Input value="ms" disabled style={{ width: "auto" }} />
-                    </Space.Compact>
+                    <InputNumber min={500} max={120_000} suffix="ms" style={{ width: "100%" }} />
                   </Form.Item>
                 </Col>
               </Row>
