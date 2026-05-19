@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { base64ToUtf8, createSourceMapFetcher, fetchTextWithLimits, resolveSourceMapUrl } from "../src/background/sessions/fetch.mjs";
+import { retryFailedMapFetch } from "../src/background/sessions/index.mjs";
 
 describe("background sourceMaps", () => {
   beforeEach(() => {
@@ -182,5 +183,44 @@ describe("background sourceMaps", () => {
     expect(callbackA).toHaveBeenCalledWith("https://example.com/app.js.map", '{"version":3,"sources":["a"],"sourcesContent":["b"]}');
     expect(callbackB).toHaveBeenCalledWith("https://example.com/app.js.map", '{"version":3,"sources":["a"],"sourcesContent":["b"]}');
     expect(state.pendingSourceMapFetches.size).toBe(0);
+  });
+});
+
+describe("retryFailedMapFetch mutex", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    // Clear the in-progress set between tests.
+    retryFailedMapFetch._inProgress.clear();
+  });
+
+  it("rejects a second concurrent call for the same versionId+mapUrl", async () => {
+    // Simulate a first retry already in progress by inserting the key directly.
+    retryFailedMapFetch._inProgress.add("v-mutex::a.map");
+
+    // Second call for the same key should be rejected immediately without touching IDB.
+    await expect(retryFailedMapFetch("v-mutex", "a.map")).rejects.toThrow("Retry already in progress");
+
+    // The set should still contain the key (cleared by the real first call's finally).
+    expect(retryFailedMapFetch._inProgress.has("v-mutex::a.map")).toBe(true);
+  });
+
+  it("does not block calls with a different versionId+mapUrl key", async () => {
+    // Lock key A (v-a::x.map).
+    retryFailedMapFetch._inProgress.add("v-a::x.map");
+
+    // Different versionId, same mapUrl: not blocked.
+    await expect(retryFailedMapFetch("v-b", "x.map")).rejects.toThrow("Version not found");
+    // Different mapUrl, same versionId: not blocked.
+    await expect(retryFailedMapFetch("v-a", "y.map")).rejects.toThrow("Version not found");
+    // Same key: blocked.
+    await expect(retryFailedMapFetch("v-a", "x.map")).rejects.toThrow("Retry already in progress");
+  });
+
+  it("clears the key from _inProgress even when the call throws after the key is added", async () => {
+    // "Version not found" is thrown inside the try block, so the finally block runs.
+    await expect(retryFailedMapFetch("no-such-version", "b.map")).rejects.toThrow("Version not found");
+
+    // Key must have been cleaned up by the finally block.
+    expect(retryFailedMapFetch._inProgress.has("no-such-version::b.map")).toBe(false);
   });
 });

@@ -269,59 +269,74 @@ export function isValidSourceMap(raw) {
 }
 
 export async function retryFailedMapFetch(versionId, mapUrl) {
-  const meta = state.versionIndex[versionId];
-  if (!meta) throw new Error("Version not found");
-  if (meta.failedMapHttpStatuses?.[mapUrl] === 404) {
-    throw new Error("HTTP 404: Map does not exist");
+  // Guard against concurrent retries for the same (versionId, mapUrl) pair.
+  // Without this, two simultaneous calls both read the same stale `meta` as
+  // previousMeta in persistVersionState, causing deltaByBlob to decrement the
+  // blob refCount twice and potentially corrupt the blobIndex.
+  const retryKey = `${versionId}::${mapUrl}`;
+  if (retryFailedMapFetch._inProgress.has(retryKey)) {
+    throw new Error("Retry already in progress for this map");
   }
-  const s = currentSettings();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), s.fetchTimeoutMs ?? 30_000);
-  let content;
+  retryFailedMapFetch._inProgress.add(retryKey);
+
   try {
-    content = await fetchTextWithLimits(mapUrl, controller.signal, s.maxMapBytes ?? 50 * 1024 * 1024);
-  } finally {
-    clearTimeout(timer);
-  }
-  if (!content || typeof content !== 'string') {
-    const httpStatus = content?.httpError;
-    if (httpStatus === 404) {
-      // Reclassify this failure as a permanent 404 so the UI can move it into
-      // the tree and stop offering a retry button, even for pre-existing records
-      // that were stored without httpStatus information.
-      const nextFailedMapHttpStatuses = Object.assign({}, meta.failedMapHttpStatuses || {}, { [mapUrl]: 404 });
-      const updatedMeta = Object.assign({}, meta, { failedMapHttpStatuses: nextFailedMapHttpStatuses });
-      const existingRefs = await loadVersionRefs(versionId);
-      await persistVersionState(updatedMeta, existingRefs, {}, meta);
-      broadcastSummary();
-      return { mapUrl, mapCount: (meta.mapUrls || []).length, failedMapUrls: meta.failedMapUrls || [], failedMapHttpStatuses: nextFailedMapHttpStatuses };
+    const meta = state.versionIndex[versionId];
+    if (!meta) throw new Error("Version not found");
+    if (meta.failedMapHttpStatuses?.[mapUrl] === 404) {
+      throw new Error("HTTP 404: Map does not exist");
     }
-    throw new Error(httpStatus ? `HTTP ${httpStatus}` : "Empty or non-OK response");
+    const s = currentSettings();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), s.fetchTimeoutMs ?? 30_000);
+    let content;
+    try {
+      content = await fetchTextWithLimits(mapUrl, controller.signal, s.maxMapBytes ?? 50 * 1024 * 1024);
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!content || typeof content !== 'string') {
+      const httpStatus = content?.httpError;
+      if (httpStatus === 404) {
+        // Reclassify this failure as a permanent 404 so the UI can move it into
+        // the tree and stop offering a retry button, even for pre-existing records
+        // that were stored without httpStatus information.
+        const nextFailedMapHttpStatuses = Object.assign({}, meta.failedMapHttpStatuses || {}, { [mapUrl]: 404 });
+        const updatedMeta = Object.assign({}, meta, { failedMapHttpStatuses: nextFailedMapHttpStatuses });
+        const existingRefs = await loadVersionRefs(versionId);
+        await persistVersionState(updatedMeta, existingRefs, {}, meta);
+        broadcastSummary();
+        return { mapUrl, mapCount: (meta.mapUrls || []).length, failedMapUrls: meta.failedMapUrls || [], failedMapHttpStatuses: nextFailedMapHttpStatuses };
+      }
+      throw new Error(httpStatus ? `HTTP ${httpStatus}` : "Empty or non-OK response");
+    }
+    if (!isValidSourceMap(content)) throw new Error("Not a valid source map");
+    const mapHash = await hashString(content);
+    const blobId = blobStoreKey(meta.siteKey, mapHash);
+    const now = new Date().toISOString();
+    const newBlob = { id: blobId, siteKey: meta.siteKey, mapHash, byteSize: content.length, content, createdAt: now, refCount: 0 };
+    const newRef = { versionId, mapUrl, siteKey: meta.siteKey, mapHash, blobId, byteSize: content.length };
+    const existingRefs = await loadVersionRefs(versionId);
+    const dedupedRefs = existingRefs.filter((r) => r.mapUrl !== mapUrl).concat([newRef]);
+    const nextMapUrls = [...new Set([...(meta.mapUrls || []), mapUrl])].sort();
+    const nextFailedMapUrls = (meta.failedMapUrls || []).filter((u) => u !== mapUrl);
+    const nextFailedMapHttpStatuses = Object.assign({}, meta.failedMapHttpStatuses || {});
+    delete nextFailedMapHttpStatuses[mapUrl];
+    const existingByteSize = existingRefs.reduce((sum, r) => sum + (Number(r.byteSize) || 0), 0);
+    const updatedMeta = Object.assign({}, meta, {
+      mapUrls: nextMapUrls,
+      mapCount: nextMapUrls.length,
+      fileCount: nextMapUrls.length,
+      failedMapUrls: nextFailedMapUrls,
+      failedMapHttpStatuses: nextFailedMapHttpStatuses,
+      byteSize: existingByteSize + content.length,
+      lastSeenAt: now,
+    });
+    await persistVersionState(updatedMeta, dedupedRefs, { [blobId]: newBlob }, meta);
+    sortPageVersions(meta.pageUrl);
+    broadcastSummary();
+    return { mapUrl, mapCount: nextMapUrls.length, failedMapUrls: nextFailedMapUrls, failedMapHttpStatuses: nextFailedMapHttpStatuses };
+  } finally {
+    retryFailedMapFetch._inProgress.delete(retryKey);
   }
-  if (!isValidSourceMap(content)) throw new Error("Not a valid source map");
-  const mapHash = await hashString(content);
-  const blobId = blobStoreKey(meta.siteKey, mapHash);
-  const now = new Date().toISOString();
-  const newBlob = { id: blobId, siteKey: meta.siteKey, mapHash, byteSize: content.length, content, createdAt: now, refCount: 0 };
-  const newRef = { versionId, mapUrl, siteKey: meta.siteKey, mapHash, blobId, byteSize: content.length };
-  const existingRefs = await loadVersionRefs(versionId);
-  const dedupedRefs = existingRefs.filter((r) => r.mapUrl !== mapUrl).concat([newRef]);
-  const nextMapUrls = [...new Set([...(meta.mapUrls || []), mapUrl])].sort();
-  const nextFailedMapUrls = (meta.failedMapUrls || []).filter((u) => u !== mapUrl);
-  const nextFailedMapHttpStatuses = Object.assign({}, meta.failedMapHttpStatuses || {});
-  delete nextFailedMapHttpStatuses[mapUrl];
-  const existingByteSize = existingRefs.reduce((sum, r) => sum + (Number(r.byteSize) || 0), 0);
-  const updatedMeta = Object.assign({}, meta, {
-    mapUrls: nextMapUrls,
-    mapCount: nextMapUrls.length,
-    fileCount: nextMapUrls.length,
-    failedMapUrls: nextFailedMapUrls,
-    failedMapHttpStatuses: nextFailedMapHttpStatuses,
-    byteSize: existingByteSize + content.length,
-    lastSeenAt: now,
-  });
-  await persistVersionState(updatedMeta, dedupedRefs, { [blobId]: newBlob }, meta);
-  sortPageVersions(meta.pageUrl);
-  broadcastSummary();
-  return { mapUrl, mapCount: nextMapUrls.length, failedMapUrls: nextFailedMapUrls, failedMapHttpStatuses: nextFailedMapHttpStatuses };
 }
+retryFailedMapFetch._inProgress = new Set();
