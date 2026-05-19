@@ -136,5 +136,11 @@ export function initializeRuntime() {
   return Promise.all([ensureStorageReady(), loadSettings()]).then((results) => {
     registerRuntimeListeners();
     return results;
+  }).catch((err) => {
+    // If initialization fails after the IDB connection was established, reset
+    // storageReadyPromise so a subsequent retry starts from a clean state
+    // instead of treating a half-initialized DB as fully ready.
+    state.storageReadyPromise = null;
+    throw err;
   });
 }

@@ -736,6 +736,54 @@ describe("background runtime wiring and entry", () => {
     expect(chrome.action.setBadgeText).toHaveBeenCalledWith({ text: "" });
   });
 
+  it("initializeRuntime resets storageReadyPromise when initialization fails", async () => {
+    vi.resetModules();
+    // Provide a shared.mjs state object that we can inspect.
+    const sharedState = { storageReadyPromise: "pre-existing-promise", settings: null };
+    vi.doMock("../src/background/shared.mjs", () => ({
+      state: sharedState,
+      canonicalPageUrl: (u) => u,
+      latestVersionForPage: vi.fn(() => null),
+      refreshBadgeForActiveTab: vi.fn(),
+      refreshBadgeForTab: vi.fn(),
+      shouldIgnoreAnalysisForUrl: vi.fn(() => false),
+      versionLabel: vi.fn(() => ""),
+      sortPageVersions: vi.fn(),
+      broadcastSummary: vi.fn(),
+    }));
+    vi.doMock("../src/background/storage/index.mjs", () => ({
+      ensureStorageReady: vi.fn(() => Promise.resolve("db")),
+      loadSettings: vi.fn(() => Promise.reject(new Error("settings load failed"))),
+      currentSettings: vi.fn(() => ({})),
+      summarizePages: vi.fn(() => []),
+      distributionSummary: vi.fn(() => []),
+      saveSettings: vi.fn(),
+      prunePageHistory: vi.fn(),
+      deletePageHistoryAndSessions: vi.fn(),
+      deleteSiteHistoryAndSessions: vi.fn(),
+      deleteVersions: vi.fn(),
+      removeVersionsFromIndexes: vi.fn(),
+      importSourceMapsForPage: vi.fn(),
+      loadVersionFiles: vi.fn(),
+      pushSummary: vi.fn(),
+      totalStorageBytes: vi.fn(() => 0),
+    }));
+    vi.doMock("../src/background/storage/compaction.mjs", () => ({
+      compactStorageData: vi.fn(),
+      cleanupLegacyDataTables: vi.fn(),
+      runCleanupTasks: vi.fn(),
+    }));
+    vi.doMock("../src/background/sessions/index.mjs", () => ({
+      createSourceMapSession: vi.fn(),
+      retryFailedMapFetch: vi.fn(),
+    }));
+
+    const runtime = await import("../src/background/runtime/index.mjs");
+    await expect(runtime.initializeRuntime()).rejects.toThrow("settings load failed");
+    // After failure, storageReadyPromise must be null so the next attempt starts fresh.
+    expect(sharedState.storageReadyPromise).toBe(null);
+  });
+
   it("logs init failures from background entry", async () => {
     vi.resetModules();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
