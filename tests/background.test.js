@@ -66,6 +66,7 @@ describe("background runtime regressions", () => {
     vi.resetModules();
     vi.restoreAllMocks();
     vi.doUnmock("../src/background/storage.mjs");
+    vi.doUnmock("../src/background/storage-compaction.mjs");
     vi.doUnmock("../src/background/sessions.mjs");
   });
 
@@ -95,10 +96,15 @@ describe("background runtime regressions", () => {
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes: vi.fn(),
-      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
       saveSettings: vi.fn(() => Promise.resolve()),
       summarizePages: vi.fn(() => []),
       totalStorageBytes: vi.fn(() => 0),
+    }));
+
+    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
+      compactStorageData: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
     }));
 
     vi.doMock("../src/background/sessions.mjs", () => ({
@@ -141,10 +147,15 @@ describe("background runtime regressions", () => {
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes: vi.fn(),
-      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
       saveSettings: vi.fn(() => Promise.resolve()),
       summarizePages: vi.fn(() => []),
       totalStorageBytes: vi.fn(() => 0),
+    }));
+
+    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
+      compactStorageData: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
     }));
 
     vi.doMock("../src/background/sessions.mjs", () => ({
@@ -177,8 +188,6 @@ describe("background runtime regressions", () => {
       return {
         ...actual,
         broadcastSummary,
-        cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
-        compactStorageData: vi.fn(),
         currentSettings: vi.fn(() => ({ detectionEnabled: true })),
         deletePageHistoryAndSessions: vi.fn(),
         deleteSiteHistoryAndSessions: vi.fn(),
@@ -191,12 +200,17 @@ describe("background runtime regressions", () => {
         prunePageHistory: vi.fn(() => Promise.resolve()),
         pushSummary: vi.fn(),
         removeVersionsFromIndexes,
-        runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
         saveSettings: vi.fn(() => Promise.resolve()),
         summarizePages: vi.fn(() => []),
         totalStorageBytes: vi.fn(() => 0),
       };
     });
+
+    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
+      compactStorageData: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
+    }));
 
     vi.doMock("../src/background/sessions.mjs", () => ({
       cleanupTabSession: vi.fn(),
@@ -269,10 +283,15 @@ describe("background runtime regressions", () => {
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes: vi.fn(),
-      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
       saveSettings: vi.fn(() => Promise.resolve()),
       summarizePages: vi.fn(() => []),
       totalStorageBytes: vi.fn(() => 12),
+    }));
+
+    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
+      compactStorageData: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
     }));
 
     vi.doMock("../src/background/sessions.mjs", () => ({
@@ -343,8 +362,6 @@ describe("background runtime regressions", () => {
 
     vi.doMock("../src/background/storage.mjs", () => ({
       broadcastSummary,
-      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: true, summary: "Removed 1 legacy data tables", removedTables: ["sourceMaps"] })),
-      compactStorageData,
       currentSettings: vi.fn(() => ({ detectionEnabled: true })),
       deletePageHistoryAndSessions,
       deleteSiteHistoryAndSessions,
@@ -357,10 +374,15 @@ describe("background runtime regressions", () => {
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes,
-      runCleanupTasks,
       saveSettings: vi.fn(() => Promise.resolve()),
       summarizePages,
       totalStorageBytes: vi.fn(() => 99),
+    }));
+
+    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: true, summary: "Removed 1 legacy data tables", removedTables: ["sourceMaps"] })),
+      compactStorageData,
+      runCleanupTasks,
     }));
 
     vi.doMock("../src/background/sessions.mjs", () => ({
@@ -496,6 +518,28 @@ describe("background runtime regressions", () => {
       totalStorageBytes: vi.fn(() => 0),
     }));
 
+    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
+      compactStorageData: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
+      runCleanupTasks: vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          error: null,
+          cleaned: [],
+          stats: {
+            removedVersions: 0,
+            removedMaps: 0,
+            reclaimedBytes: 0,
+            remainingVersions: 0,
+            remainingMaps: 0,
+            remainingBytes: 0,
+            upgradedRefs: 0,
+            upgradedVersions: 0,
+          },
+          steps: [{ id: "cleanup-data-tables", label: "Cleanup legacy data tables", ok: true, changed: false, summary: "Legacy data tables already clean" }],
+        }),
+    }));
+
     vi.doMock("../src/background/sessions.mjs", () => ({
       cleanupTabSession: vi.fn(),
       fetchSourceMap: vi.fn(),
@@ -576,10 +620,15 @@ describe("background runtime regressions", () => {
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes: vi.fn(),
-      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
       saveSettings: vi.fn(() => Promise.reject(new Error("settings exploded"))),
       summarizePages: vi.fn(() => []),
       totalStorageBytes: vi.fn(() => 0),
+    }));
+
+    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
+      compactStorageData: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
     }));
 
     vi.doMock("../src/background/sessions.mjs", () => ({
@@ -625,10 +674,15 @@ describe("background runtime regressions", () => {
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes: vi.fn(),
-      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
       saveSettings: vi.fn(() => Promise.resolve()),
       summarizePages: vi.fn(() => []),
       totalStorageBytes: vi.fn(() => 0),
+    }));
+
+    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
+      compactStorageData: vi.fn(),
+      runCleanupTasks: vi.fn(() => Promise.resolve({ ok: true, error: null, cleaned: [], stats: { removedVersions: 0, removedMaps: 0, reclaimedBytes: 0, remainingVersions: 0, remainingMaps: 0, remainingBytes: 0 }, steps: [] })),
     }));
 
     vi.doMock("../src/background/sessions.mjs", () => ({
@@ -670,10 +724,15 @@ describe("background runtime regressions", () => {
       prunePageHistory: vi.fn(() => Promise.resolve()),
       pushSummary: vi.fn(),
       removeVersionsFromIndexes: vi.fn(),
-      runCleanupTasks: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
       saveSettings: vi.fn(() => Promise.resolve()),
       summarizePages: vi.fn(() => []),
       totalStorageBytes: vi.fn(() => 0),
+    }));
+
+    vi.doMock("../src/background/storage-compaction.mjs", () => ({
+      cleanupLegacyDataTables: vi.fn(() => Promise.resolve({ changed: false, summary: "Legacy data tables already clean" })),
+      compactStorageData: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
+      runCleanupTasks: vi.fn(() => Promise.reject(new Error("cleanup exploded"))),
     }));
 
     vi.doMock("../src/background/sessions.mjs", () => ({
@@ -727,6 +786,7 @@ describe("session persistence regressions", () => {
     vi.resetModules();
     vi.restoreAllMocks();
     vi.doUnmock("../src/background/storage.mjs");
+    vi.doUnmock("../src/background/storage-compaction.mjs");
     vi.doUnmock("../src/background/sessions.mjs");
   });
 
@@ -1093,11 +1153,12 @@ describe("storage compaction regressions", () => {
     vi.resetModules();
     vi.restoreAllMocks();
     vi.doUnmock("../src/background/storage.mjs");
+    vi.doUnmock("../src/background/storage-compaction.mjs");
     vi.doUnmock("../src/background/sessions.mjs");
   });
 
   it("keeps partially recoverable versions during compaction", async () => {
-    const storage = await import("../src/background/storage.mjs");
+    const storageCompaction = await import("../src/background/storage-compaction.mjs");
 
     const meta = {
       id: "v1",
@@ -1165,7 +1226,7 @@ describe("storage compaction regressions", () => {
       })),
     };
 
-    const result = await storage.buildCompactedStorageState(db, [meta]);
+    const result = await storageCompaction.buildCompactedStorageState(db, [meta]);
 
     expect(result.invalidVersions).toEqual([]);
     expect(result.desiredRefs).toHaveLength(1);

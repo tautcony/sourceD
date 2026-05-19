@@ -962,6 +962,7 @@ describe("background storage helpers", () => {
 
   it("covers index removal and compaction stats", async () => {
     const storage = await import("../src/background/storage.mjs");
+    const storageCompaction = await import("../src/background/storage-compaction.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
@@ -1029,7 +1030,7 @@ describe("background storage helpers", () => {
     shared.state.blobIndex = {};
     await storage.ensureStorageReady();
 
-    const compacted = await storage.compactStorageData();
+    const compacted = await storageCompaction.compactStorageData();
     expect(compacted).toEqual(expect.objectContaining({
       invalidVersions: expect.any(Array),
       stats: expect.objectContaining({
@@ -1041,7 +1042,7 @@ describe("background storage helpers", () => {
   });
 
   it("upgrades old hashed refs and version signatures during compaction", async () => {
-    const storage = await import("../src/background/storage.mjs");
+    const storageCompaction = await import("../src/background/storage-compaction.mjs");
 
     const meta = {
       id: "legacy",
@@ -1057,7 +1058,7 @@ describe("background storage helpers", () => {
       signature: "legacy.map#oldhash",
     };
 
-    const compacted = await storage.buildCompactedStorageState({
+    const compacted = await storageCompaction.buildCompactedStorageState({
       transaction: () => ({
         objectStore: (name) => ({
           getAll: () => createRequest(name === "mapBlobs" ? [{
@@ -1106,6 +1107,7 @@ describe("background storage helpers", () => {
 
   it("merges legacy query variants and redundant subset versions during compaction", async () => {
     const storage = await import("../src/background/storage.mjs");
+    const storageCompaction = await import("../src/background/storage-compaction.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
@@ -1162,7 +1164,7 @@ describe("background storage helpers", () => {
     shared.state.blobIndex = {};
     await storage.ensureStorageReady();
 
-    const compacted = await storage.compactStorageData();
+    const compacted = await storageCompaction.compactStorageData();
 
     expect(compacted.stats).toEqual(expect.objectContaining({
       removedVersions: 1,
@@ -1189,6 +1191,7 @@ describe("background storage helpers", () => {
 
   it("compaction rechecks storedByteSize from compressed blobs", async () => {
     const storage = await import("../src/background/storage.mjs");
+    const storageCompaction = await import("../src/background/storage-compaction.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
@@ -1238,7 +1241,7 @@ describe("background storage helpers", () => {
       storedByteSize: shared.state.versionIndex[created.versionId].byteSize,
     };
 
-    const compacted = await storage.compactStorageData();
+    const compacted = await storageCompaction.compactStorageData();
     const repairedMeta = shared.state.versionIndex[created.versionId];
 
     expect(compacted.stats.upgradedVersions).toBeGreaterThan(0);
@@ -1248,6 +1251,7 @@ describe("background storage helpers", () => {
 
   it("covers persist/delete refcount paths, compaction builder branches, and session clearing", async () => {
     const storage = await import("../src/background/storage.mjs");
+    const storageCompaction = await import("../src/background/storage-compaction.mjs");
     const shared = await import("../src/background/shared.mjs");
     const db = createInMemoryDb();
 
@@ -1342,7 +1346,7 @@ describe("background storage helpers", () => {
       lastSeenAt: "2026-01-02T00:00:00.000Z",
       mapUrls: ["raw.map", "record.map", "missing.map"],
     };
-    const compacted = await storage.buildCompactedStorageState({
+    const compacted = await storageCompaction.buildCompactedStorageState({
       transaction: () => ({
         objectStore: (name) => ({
           getAll: () => createRequest(name === "mapBlobs" ? [{
@@ -1510,7 +1514,7 @@ describe("background storage helpers", () => {
   });
 
   it("reports legacy table removal only once per actual cleanup", async () => {
-    const storage = await import("../src/background/storage.mjs");
+    const storageCompaction = await import("../src/background/storage-compaction.mjs");
     const shared = await import("../src/background/shared.mjs");
 
     shared.state.dbPromise = Promise.resolve({
@@ -1526,14 +1530,14 @@ describe("background storage helpers", () => {
       removedStores: ["sourceMaps"],
     };
 
-    const first = await storage.cleanupLegacyDataTables();
+    const first = await storageCompaction.cleanupLegacyDataTables();
     expect(first).toEqual(expect.objectContaining({
       changed: true,
       removedTables: ["sourceMaps"],
       summary: "Removed 1 legacy data tables",
     }));
 
-    const second = await storage.cleanupLegacyDataTables();
+    const second = await storageCompaction.cleanupLegacyDataTables();
     expect(second).toEqual(expect.objectContaining({
       changed: false,
       removedTables: [],
@@ -1593,7 +1597,7 @@ describe("background storage helpers", () => {
   });
 
   it("runCleanupTasks records failed steps when DB is unavailable", async () => {
-    const storage = await import("../src/background/storage.mjs");
+    const storageCompaction = await import("../src/background/storage-compaction.mjs");
     const shared = await import("../src/background/shared.mjs");
 
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -1615,7 +1619,7 @@ describe("background storage helpers", () => {
     // Non-empty versionIndex forces compactStorageData to actually run (not fast-path)
     shared.state.versionIndex = { v1: { id: "v1" } };
 
-    const result = await storage.runCleanupTasks();
+    const result = await storageCompaction.runCleanupTasks();
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/cleanup steps failed/);

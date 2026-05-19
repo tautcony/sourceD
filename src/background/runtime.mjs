@@ -9,8 +9,6 @@ import {
 } from "./shared.mjs";
 import {
   broadcastSummary,
-  cleanupLegacyDataTables,
-  compactStorageData,
   currentSettings,
   deletePageHistoryAndSessions,
   deleteSiteHistoryAndSessions,
@@ -23,11 +21,15 @@ import {
   prunePageHistory,
   pushSummary,
   removeVersionsFromIndexes,
-  runCleanupTasks,
   saveSettings,
   summarizePages,
   totalStorageBytes,
 } from "./storage.mjs";
+import {
+  cleanupLegacyDataTables,
+  compactStorageData,
+  runCleanupTasks,
+} from "./storage-compaction.mjs";
 import {
   cleanupTabSession,
   fetchSourceMap,
