@@ -126,37 +126,49 @@ export function loadVersionRefsRaw(db, meta) {
     return Promise.resolve([]);
   }
 
+  // Collect raw IDB values synchronously (no await inside onsuccess to keep the
+  // transaction active), then process legacy string entries outside the transaction.
   return new Promise((resolve, reject) => {
     const tx = db.transaction(MAP_STORE, "readonly");
     const store = tx.objectStore(MAP_STORE);
-    const refs = [];
+    const rawEntries = [];
     let pending = meta.mapUrls.length;
     const siteKey = meta.siteKey || pageSiteKey(meta.pageUrl);
 
     meta.mapUrls.forEach((mapUrl) => {
       const req = store.get(mapStoreKey(meta.id, mapUrl));
-      req.onsuccess = async () => {
-        const value = req.result;
-        if (typeof value === "string") {
-          const mapHash = await hashString(value);
-          refs.push({
-            versionId: meta.id,
-            mapUrl,
-            siteKey,
-            mapHash,
-            blobId: blobStoreKey(siteKey, mapHash),
-            byteSize: value.length,
-            rawContent: value,
-          });
-        } else if (value != null) {
-          refs.push(value);
-        }
+      req.onsuccess = () => {
+        rawEntries.push({ mapUrl, value: req.result });
         pending--;
-        if (pending === 0) resolve(refs);
+        if (pending === 0) {
+          // All IDB requests done; safe to do async work outside the transaction.
+          processVersionRawEntries(rawEntries, meta, siteKey).then(resolve).catch(reject);
+        }
       };
       req.onerror = () => reject(req.error);
     });
   });
+}
+
+async function processVersionRawEntries(rawEntries, meta, siteKey) {
+  const refs = [];
+  for (const { mapUrl, value } of rawEntries) {
+    if (typeof value === "string") {
+      const mapHash = await hashString(value);
+      refs.push({
+        versionId: meta.id,
+        mapUrl,
+        siteKey,
+        mapHash,
+        blobId: blobStoreKey(siteKey, mapHash),
+        byteSize: value.length,
+        rawContent: value,
+      });
+    } else if (value != null) {
+      refs.push(value);
+    }
+  }
+  return refs;
 }
 
 export function loadBlobContentsRaw(db, blobIds) {
@@ -180,23 +192,31 @@ export function loadBlobContentsRaw(db, blobIds) {
       return;
     }
 
+    const rawRecords = [];
     let pending = ids.length;
     ids.forEach((blobId) => {
       const req = store.get(blobId);
-      req.onsuccess = async () => {
-        try {
-          if (req.result && req.result.content != null) {
-            contentById[blobId] = await decodeBlobContent(req.result);
-          }
-          pending--;
-          if (pending === 0) resolve(contentById);
-        } catch (error) {
-          reject(error);
+      req.onsuccess = () => {
+        rawRecords.push({ blobId, record: req.result });
+        pending--;
+        if (pending === 0) {
+          // All IDB requests done; decode blob content outside the transaction.
+          processBlobRawRecords(rawRecords).then(resolve).catch(reject);
         }
       };
       req.onerror = () => reject(req.error);
     });
   });
+}
+
+async function processBlobRawRecords(rawRecords) {
+  const contentById = {};
+  for (const { blobId, record } of rawRecords) {
+    if (record && record.content != null) {
+      contentById[blobId] = await decodeBlobContent(record);
+    }
+  }
+  return contentById;
 }
 
 export function summarizeLegacyDataStores(db) {

@@ -242,4 +242,68 @@ describe("background db adapters", () => {
     // state.lastDbMaintenance.fromVersion should use the transaction.db.version (3)
     expect(state.lastDbMaintenance?.fromVersion).toBe(3);
   });
+
+  it("loadVersionRefsRaw returns all refs when multiple legacy string entries resolve concurrently", async () => {
+    // Both mapUrls have string (legacy) format; their onsuccess callbacks fire in the
+    // same microtask batch. The fix ensures onsuccess is synchronous so both entries
+    // are collected before hashString is awaited, avoiding a race where pending reaches
+    // 0 before all async work completes.
+    const makeReq = (result) => {
+      const req = { result, error: null, onsuccess: null, onerror: null };
+      // Fire all onsuccess callbacks in the same microtask so they appear concurrent.
+      queueMicrotask(() => req.onsuccess?.());
+      return req;
+    };
+    const fakeDb = {
+      transaction: vi.fn(() => ({
+        objectStore: vi.fn(() => ({
+          get: vi.fn((key) => {
+            if (key === "v1::a.map") return makeReq("content-a");
+            if (key === "v1::b.map") return makeReq("content-b");
+            return makeReq(null);
+          }),
+        })),
+      })),
+    };
+
+    const refs = await dbModule.loadVersionRefsRaw(fakeDb, {
+      id: "v1",
+      pageUrl: "https://example.com",
+      siteKey: "https://example.com",
+      mapUrls: ["a.map", "b.map"],
+    });
+
+    // Both entries must be present — no premature resolve.
+    expect(refs).toHaveLength(2);
+    const urls = refs.map((r) => r.mapUrl).sort();
+    expect(urls).toEqual(["a.map", "b.map"]);
+    refs.forEach((r) => {
+      expect(r.mapHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(r.rawContent).toBeDefined();
+    });
+  });
+
+  it("loadBlobContentsRaw returns all decoded blobs when multiple records resolve concurrently", async () => {
+    const makeReq = (result) => {
+      const req = { result, error: null, onsuccess: null, onerror: null };
+      queueMicrotask(() => req.onsuccess?.());
+      return req;
+    };
+    const fakeDb = {
+      transaction: vi.fn(() => ({
+        objectStore: vi.fn(() => ({
+          get: vi.fn((blobId) => {
+            if (blobId === "blob-1") return makeReq({ id: "blob-1", compression: "identity", content: "hello" });
+            if (blobId === "blob-2") return makeReq({ id: "blob-2", compression: "identity", content: "world" });
+            return makeReq(null);
+          }),
+        })),
+      })),
+    };
+
+    const result = await dbModule.loadBlobContentsRaw(fakeDb, ["blob-1", "blob-2"]);
+    // Both blobs must be present — no premature resolve.
+    expect(result["blob-1"]).toBe("hello");
+    expect(result["blob-2"]).toBe("world");
+  });
 });
