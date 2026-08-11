@@ -351,7 +351,7 @@ export function loadSettings() {
 }
 
 export function saveSettings(nextSettings) {
-  const mergedSettings = normalizeSettings(nextSettings);
+  const mergedSettings = normalizeSettings(Object.assign({}, state.settings, nextSettings));
   return new Promise((resolve, reject) => {
     const payload = {};
     payload[SETTINGS_KEY] = mergedSettings;

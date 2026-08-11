@@ -9,6 +9,15 @@ export function base64ToUtf8(base64) {
   return new TextDecoder().decode(bytes);
 }
 
+/**
+ * Fetch a URL as text with size limits.
+ * @param {string} url - URL to fetch
+ * @param {AbortSignal} signal - Abort signal for timeout
+ * @param {number} maxBytes - Maximum response size in bytes
+ * @returns {Promise<string|{httpError: number}>} Response text on success,
+ *   or `{ httpError: number }` for non-OK HTTP responses. Check with
+ *   `isHttpErrorResult(result)` before using as string.
+ */
 export function fetchTextWithLimits(url, signal, maxBytes = DEFAULT_MAX_MAP_BYTES) {
   return fetch(url, { signal }).then((resp) => {
     if (!resp.ok) return { httpError: resp.status };
@@ -25,6 +34,10 @@ export function fetchTextWithLimits(url, signal, maxBytes = DEFAULT_MAX_MAP_BYTE
       return text;
     });
   });
+}
+
+export function isHttpErrorResult(result) {
+  return result !== null && typeof result === "object" && "httpError" in result;
 }
 
 export function resolveSourceMapUrl(jsUrl, mapRef) {
@@ -65,16 +78,19 @@ export function createSourceMapFetcher(state, getSettings) {
         if (!match) return;
         const mapRef = match[1];
 
-        if (mapRef.startsWith("data:application/json")) {
+        if (mapRef.startsWith("data:")) {
           const commaIdx = mapRef.indexOf(",");
           if (commaIdx === -1) {
             console.warn("[SourceD] inline map data URI has no comma:", mapRef.slice(0, 80));
             fanOut(`${jsUrl}.map`, null);
             return;
           }
-          const b64 = mapRef.slice(commaIdx + 1);
+          const meta = mapRef.slice(5, commaIdx).toLowerCase();
+          const payload = mapRef.slice(commaIdx + 1);
+          const isBase64 = meta.includes("base64");
           try {
-            fanOut(`${jsUrl}.map`, base64ToUtf8(b64));
+            const decoded = isBase64 ? base64ToUtf8(payload) : decodeURIComponent(payload);
+            fanOut(`${jsUrl}.map`, decoded);
           } catch (e) {
             console.warn("[SourceD] inline map decode error:", e);
             fanOut(`${jsUrl}.map`, null);
@@ -85,7 +101,7 @@ export function createSourceMapFetcher(state, getSettings) {
         const mapUrl = resolveSourceMapUrl(jsUrl, mapRef);
         return fetchTextWithLimits(mapUrl, controller.signal, maxMapBytes)
           .then((result) => {
-            if (result !== null && typeof result === 'object' && 'httpError' in result) {
+            if (isHttpErrorResult(result)) {
               fanOut(mapUrl, null, result.httpError);
             } else {
               fanOut(mapUrl, result || null);

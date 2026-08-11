@@ -46,6 +46,10 @@ export function createWebRequestHandler(deps) {
       const session = getOrCreateSession(tab);
 
       fetchSourceMap(details.url, (mapUrl, content, httpStatus) => {
+        // Guard against races where the tab navigated between the webRequest
+        // event and this async callback. If the session was replaced (due to
+        // navigation) or cleaned up, skip the result to avoid assigning source
+        // maps from an old page to a new page's session.
         if (state.tabSessions[session.tabId] !== session) return;
         if (content === null) {
           if (!session.failedMaps) session.failedMaps = {};

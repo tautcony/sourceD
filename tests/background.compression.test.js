@@ -136,7 +136,7 @@ describe("background compression helpers", () => {
       content: encoder.encode(rawText),
     })).resolves.toBe(rawText);
 
-    expect(warn).toHaveBeenCalledWith("[SourceD] gzip decompression failed:", expect.any(Error));
+    expect(warn).toHaveBeenCalledWith("[SourceD] gzip decompression failed, falling back to raw text (data may be uncompressed or corrupted):", expect.any(Error));
   });
 
   it("rethrows decompression errors for non-JSON payloads", async () => {

@@ -118,7 +118,7 @@ export async function decodeBlobContent(record) {
       const rawText = decoder.decode(bytes);
       try {
         JSON.parse(rawText.replace(/^\)\]\}'\s*/, ""));
-        logCompressionWarning("gzip decompression", error);
+        console.warn("[SourceD] gzip decompression failed, falling back to raw text (data may be uncompressed or corrupted):", error);
         return rawText;
       } catch {
         throw error;

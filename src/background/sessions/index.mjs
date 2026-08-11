@@ -20,7 +20,7 @@ import {
   prunePageHistory,
   touchVersionMeta,
 } from "../storage/index.mjs";
-import { createSourceMapFetcher, fetchTextWithLimits } from "./fetch.mjs";
+import { createSourceMapFetcher, fetchTextWithLimits, isHttpErrorResult } from "./fetch.mjs";
 
 export async function buildSessionArtifacts(session) {
   const siteKey = pageSiteKey(session.pageUrl);
@@ -247,13 +247,24 @@ export function getOrCreateSession(tab) {
 export function cleanupTabSession(tabId) {
   const session = state.tabSessions[tabId];
   if (!session) return;
-  if (session.timer) clearTimeout(session.timer);
+  if (session.timer) {
+    clearTimeout(session.timer);
+    if (Object.keys(session.maps || {}).length > 0) {
+      upsertSessionVersion(session).catch((err) => {
+        console.warn("[SourceD] flush on cleanup failed:", err && err.message ? err.message : err);
+      });
+    }
+  }
   setBadgeText(0, tabId);
   delete state.tabSessions[tabId];
 }
 
 export const fetchSourceMap = createSourceMapFetcher(state, () => currentSettings());
 
+// Validates a source map for SourceD's purposes. SourceD recovers source code
+// from embedded `sourcesContent`, so maps without non-empty content are rejected
+// (they provide no value to the user). This is intentionally strict: a map with
+// only null/whitespace sourcesContent is not useful for source recovery.
 export function isValidSourceMap(raw) {
   try {
     const data = JSON.parse(raw.replace(/^\)\]\}'/, ""));
@@ -295,7 +306,7 @@ export async function retryFailedMapFetch(versionId, mapUrl) {
       clearTimeout(timer);
     }
     if (!content || typeof content !== 'string') {
-      const httpStatus = content?.httpError;
+      const httpStatus = isHttpErrorResult(content) ? content.httpError : null;
       if (httpStatus === 404) {
         // Reclassify this failure as a permanent 404 so the UI can move it into
         // the tree and stop offering a retry button, even for pre-existing records
